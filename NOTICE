@@ -1,0 +1,12 @@
+AK Virtual Camera
+Copyright 2026 AK Virtual Camera Authors
+
+This product includes software developed by:
+  - Microsoft Corporation — DirectShow BaseClasses sample (third_party/baseclasses)
+  - The Qt Company — Qt 6 / PySide6 (LGPL-3.0, dynamically linked)
+  - OpenCV contributors — OpenCV (Apache-2.0)
+  - NumPy developers — NumPy (BSD-3-Clause)
+  - Pydantic, structlog, pytest authors — see SBOM
+
+Apache License 2.0 applies to the original AK Virtual Camera code.
+Each third-party component retains its own license; see docs/compliance/.

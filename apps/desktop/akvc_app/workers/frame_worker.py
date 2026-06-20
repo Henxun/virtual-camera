@@ -1,0 +1,168 @@
+# SPDX-License-Identifier: Apache-2.0
+"""FrameWorker subprocess — owns the FrameBus producer.
+
+Lifecycle:
+  parent → spawn(frame_worker_main, source_id, cmd_q, stat_q)
+  worker:
+    1. open provider
+    2. open frame sink (Windows shm) — creates the named mapping/event/mutex
+    3. loop: read → pipeline → publish, until "stop" arrives on cmd_q
+    4. on exit: close sink (releases mapping when last handle is gone)
+"""
+
+from __future__ import annotations
+
+import multiprocessing as mp
+import queue
+import sys
+import time
+import traceback
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Optional
+
+import structlog
+
+import numpy as np
+
+from akvc.core import logging as akvc_log
+from akvc.core.frame_pipeline import (
+    ColorConvertStage,
+    FpsRegulator,
+    FramePipeline,
+    ResizeStage,
+)
+from akvc.core.frame_provider import (
+    FrameProvider,
+    Pattern,
+    TestPatternProvider,
+    UsbCameraProvider,
+)
+from akvc.core.frame_sink.windows_shm import WindowsShmSink
+from akvc.core.metrics import Metrics
+
+log = structlog.get_logger(__name__)
+
+
+@dataclass
+class WorkerCommand:
+    kind: str  # "stop" | "set_source" | ...
+    payload: Optional[Any] = None
+
+
+def _build_provider(source_id: str) -> FrameProvider:
+    if source_id.startswith("usb:"):
+        idx = int(source_id.split(":", 1)[1])
+        return UsbCameraProvider(device_index=idx, width=1280, height=720, fps=30)
+    # test:colorbar / test:gradient / test:checkerboard / etc.
+    pattern_id = source_id.split(":", 1)[1] if ":" in source_id else "colorbar"
+    return TestPatternProvider(
+        width=1280, height=720, fps=30,
+        pattern=Pattern.from_id(pattern_id),
+    )
+
+
+def frame_worker_main(
+    source_id: str,
+    cmd_q: "mp.Queue[WorkerCommand]",
+    stat_q: "mp.Queue[dict]",
+    preview_q: "mp.Queue[bytes] | None" = None,
+) -> int:
+    log_dir = Path.home() / "AppData" / "Local" / "AKVC" / "logs"
+    akvc_log.configure(level="INFO", log_dir=log_dir, component="akvc.worker")
+
+    provider: Optional[FrameProvider] = None
+    sink: Optional[WindowsShmSink] = None
+    metrics = Metrics()
+
+    try:
+        provider = _build_provider(source_id)
+        provider.open()
+        log.info("akvc.worker.provider_open", source=source_id)
+
+        if sys.platform != "win32":
+            raise RuntimeError("Phase 2 worker only runs on Windows")
+
+        sink = WindowsShmSink()
+        sink.open()
+        log.info("akvc.worker.sink_open")
+
+        pipeline = (
+            FramePipeline()
+            .add(ResizeStage(target_w=1280, target_h=720))
+            .add(FpsRegulator(target_fps=30.0))
+            .add(ColorConvertStage(dst="NV12"))
+        )
+
+        last_metrics_t = time.perf_counter()
+        last_preview_t = 0.0
+        while True:
+            # Drain commands.
+            try:
+                cmd = cmd_q.get_nowait()
+                if cmd.kind == "stop":
+                    log.info("akvc.worker.stop_requested")
+                    break
+            except queue.Empty:
+                pass
+
+            t0 = time.perf_counter()
+            frame = provider.read()
+
+            # Send preview thumbnail (~5 fps) from raw BGR before NV12 conversion.
+            if preview_q is not None and time.perf_counter() - last_preview_t > 0.2:
+                last_preview_t = time.perf_counter()
+                try:
+                    if frame.fourcc == 0x20424752 and frame.data.nbytes >= frame.width * frame.height * 3:
+                        bgr = frame.data[:frame.width * frame.height * 3].reshape(frame.height, frame.width, 3)
+                        import cv2
+                        thumb = cv2.resize(bgr, (320, 180), interpolation=cv2.INTER_LINEAR)
+                        # Convert BGR→RGB for Qt display.
+                        rgb = cv2.cvtColor(thumb, cv2.COLOR_BGR2RGB)
+                        preview_q.put_nowait(rgb.tobytes())
+                except (queue.Full, Exception):
+                    pass
+
+            frame = pipeline.process(frame)
+
+            try:
+                sink.publish(frame)
+                metrics.frames_published.inc()
+                metrics.fps.tick()
+                metrics.last_publish_latency_ms.set((time.perf_counter() - t0) * 1000.0)
+            except Exception:
+                metrics.frames_dropped.inc()
+                log.exception("akvc.worker.publish_failed")
+
+            # Push metrics roughly twice per second.
+            if time.perf_counter() - last_metrics_t > 0.5:
+                snap = metrics.snapshot()
+                try:
+                    stat_q.put_nowait({"kind": "metrics", **snap,
+                                       "consumer_count": sink.consumer_count})
+                except queue.Full:
+                    pass
+                last_metrics_t = time.perf_counter()
+
+        return 0
+
+    except Exception as exc:
+        tb = traceback.format_exc()
+        log.error("akvc.worker.fatal", error=str(exc))
+        try:
+            stat_q.put_nowait({"kind": "error", "error": str(exc), "traceback": tb})
+        except Exception:
+            pass
+        return 1
+    finally:
+        try:
+            if sink is not None:
+                sink.close()
+        except Exception:
+            pass
+        try:
+            if provider is not None:
+                provider.close()
+        except Exception:
+            pass
+        log.info("akvc.worker.exit")

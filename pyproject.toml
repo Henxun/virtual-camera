@@ -1,0 +1,10 @@
+[project]
+name = "amaran-virtual-camera"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "setuptools>=82.0.1",
+    "wheel>=0.47.0",
+]

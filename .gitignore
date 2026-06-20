@@ -1,0 +1,51 @@
+# Build artifacts
+build/
+out/
+dist/
+*.obj
+*.lib
+*.dll
+*.pdb
+*.exp
+*.idb
+*.tlog
+*.exe
+!installer/**/*.exe
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+*.user
+CMakeUserPresets.json
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Third-party (fetched by tools/make.py configure; do not commit)
+third_party/baseclasses/
+third_party/_classic-samples/
+third_party/_ms-samples/
+
+# Logs
+logs/
+*.log
+
+# AI workflow logs (build/run/test attempts captured by tools/make.py and friends)
+.akvc/
+
+# Stray Windows reserved-name file (created accidentally by shell redirects)
+nul

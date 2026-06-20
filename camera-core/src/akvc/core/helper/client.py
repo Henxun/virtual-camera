@@ -1,0 +1,158 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Helper Service — Python client for the akvc_helper process.
+
+The Helper is a C++ executable that:
+  - Owns the Frame Bus shared memory
+  - Monitors the UI producer's heartbeat
+  - Publishes placeholder (black) frames when the UI disconnects
+  - Listens on stdin for control commands and responds on stdout
+
+Usage:
+    helper = HelperService()
+    helper.start()       # launches akvc_helper.exe if not running
+    helper.ping()        # health check -> bool
+    helper.status()      # -> dict
+    helper.register_mf() # register MF virtual camera
+    helper.stop()        # graceful shutdown
+"""
+
+from __future__ import annotations
+
+import os
+import struct
+import subprocess
+import time
+from pathlib import Path
+from typing import Optional
+
+CMD_QUIT = 0x00000001
+CMD_PING = 0x00000002
+CMD_STATUS = 0x00000003
+CMD_REGISTER_MF = 0x00000004
+
+RSP_OK = 0x00000000
+RSP_PONG = 0x00000001
+RSP_UNKNOWN = 0xFFFFFFFF
+
+
+def _find_helper_exe() -> Optional[Path]:
+    env = os.environ.get("AKVC_HELPER_EXE")
+    if env:
+        p = Path(env)
+        if p.is_file():
+            return p
+
+    candidates = [
+        Path.cwd(),
+        Path(__file__).resolve().parent.parent.parent.parent.parent,
+    ]
+    for base in candidates:
+        for sub in ["build/bin/Release/akvc_helper.exe",
+                     "build/bin/akvc_helper.exe"]:
+            p = base / sub
+            if p.is_file():
+                return p
+
+    p = Path(r"C:\Program Files\AKVC\bin\akvc_helper.exe")
+    if p.is_file():
+        return p
+    return None
+
+
+class HelperService:
+    """Manages the akvc_helper.exe process via stdin/stdout IPC."""
+
+    def __init__(self) -> None:
+        self._proc: Optional[subprocess.Popen] = None
+
+    def start(self) -> bool:
+        if self.is_alive():
+            return True
+
+        exe = _find_helper_exe()
+        if exe is None:
+            return False
+
+        try:
+            self._proc = subprocess.Popen(
+                [str(exe)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        except OSError:
+            self._proc = None
+            return False
+
+        for _ in range(20):
+            if self.ping():
+                return True
+            time.sleep(0.05)
+        return False
+
+    def stop(self, timeout: float = 3.0) -> None:
+        self._transact(CMD_QUIT)
+        if self._proc is not None:
+            try:
+                self._proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                try:
+                    self._proc.kill()
+                except Exception:
+                    pass
+                self._proc.wait(timeout=2.0)
+            self._proc = None
+
+    def is_alive(self) -> bool:
+        return self.ping()
+
+    def ping(self) -> bool:
+        data = self._transact(CMD_PING)
+        if data is None or len(data) < 4:
+            return False
+        rsp = struct.unpack("<I", data[:4])[0]
+        return rsp == RSP_PONG
+
+    def status(self) -> Optional[dict]:
+        data = self._transact(CMD_STATUS)
+        if data is None or len(data) < 24:
+            return None
+        magic, pid, heartbeat, seq_lo, seq_hi = struct.unpack(
+            "<I I Q I I", data[:24]
+        )
+        return {
+            "magic": magic,
+            "pid": pid,
+            "heartbeat_100ns": heartbeat,
+            "producer_seq": (seq_hi << 32) | seq_lo,
+        }
+
+    def register_mf(self) -> bool:
+        """Register the MF virtual camera with Windows."""
+        data = self._transact(CMD_REGISTER_MF)
+        if data is None or len(data) < 4:
+            return False
+        rsp = struct.unpack("<I", data[:4])[0]
+        return rsp == RSP_OK
+
+    # ---------- internal ----------
+
+    def _transact(self, cmd: int, timeout_ms: int = 5000) -> Optional[bytes]:
+        """Send a command and read response via stdin/stdout."""
+        if self._proc is None or self._proc.stdin is None or self._proc.stdout is None:
+            return None
+        try:
+            self._proc.stdin.write(struct.pack("<I", cmd))
+            self._proc.stdin.flush()
+
+            # For STATUS, response is 24 bytes direct (no 4-byte header).
+            if cmd == CMD_STATUS:
+                data = self._proc.stdout.read(24)
+                return data if data and len(data) == 24 else None
+
+            # For other commands, response is a single 4-byte status code.
+            data = self._proc.stdout.read(4)
+            return data if data and len(data) == 4 else None
+        except Exception:
+            return None

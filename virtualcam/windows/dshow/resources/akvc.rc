@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+#include <windows.h>
+
+#define AKVC_VER_FILEVERSION    0,2,0,0
+#define AKVC_VER_PRODVERSION    0,2,0,0
+#define AKVC_VER_FILEVERSION_S  "0.2.0.0"
+#define AKVC_VER_PRODVERSION_S  "0.2.0.0"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    AKVC_VER_FILEVERSION
+ PRODUCTVERSION AKVC_VER_PRODVERSION
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS 0x40004L
+ FILETYPE 0x2L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName",      "AK Virtual Camera Authors"
+            VALUE "FileDescription",  "AK Virtual Camera DirectShow Source Filter"
+            VALUE "FileVersion",      AKVC_VER_FILEVERSION_S
+            VALUE "InternalName",     "akvc-dshow"
+            VALUE "LegalCopyright",   "Copyright (C) 2026 AK Virtual Camera Authors"
+            VALUE "OriginalFilename", "akvc-dshow.dll"
+            VALUE "ProductName",      "AK Virtual Camera"
+            VALUE "ProductVersion",   AKVC_VER_PRODVERSION_S
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

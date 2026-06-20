@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "akvc-core"
+version = "0.2.0"
+description = "AK Virtual Camera — frame core (cross-platform)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Apache-2.0" }
+authors = [{ name = "AK Virtual Camera Authors" }]
+dependencies = [
+    "numpy>=1.26,<3.0",
+    "opencv-python-headless>=4.9,<5.0",
+    "pydantic>=2.5,<3.0",
+    "structlog>=24.1,<26",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.1", "pytest-cov>=4.1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["akvc*"]
+
+[tool.setuptools.package-data]
+"akvc.core" = ["py.typed"]
