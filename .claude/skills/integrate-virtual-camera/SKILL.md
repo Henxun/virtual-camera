@@ -1,43 +1,43 @@
 ---
 name: integrate-virtual-camera
-description: Embed the AK Virtual Camera (DShow + MF dual-stack) into an external PySide6/Python project. Minimal-dependency recipe using akvc-core + 3 native binaries. Use when integrating virtual camera output into another application that already has its own video source.
+description: 将 AK Virtual Camera（DShow + MF 双栈）集成到外部 PySide6/Python 项目。最小依赖方案：akvc-core 包 + 3 个 native 二进制文件。适用于已有自有视频源、需要将画面推送到系统虚拟摄像头的应用。
 ---
 
-# Integrate AK Virtual Camera into an External Project
+# 集成 AK Virtual Camera 到外部项目
 
-This skill covers the **consumer side**: you already have a PySide6 (or any Python) app that produces video frames, and you want to push them to a system-wide virtual camera that Chrome/OBS/Teams/Zoom all see. You do NOT need the desktop app or the worker subprocess — just the `akvc-core` package and three native binaries.
+本 skill 面向**消费端**：你已有一个 PySide6（或任意 Python）应用能产出视频帧，想把帧推送到系统级虚拟摄像头，让 Chrome/OBS/Teams/Zoom 都能看到。**不需要** desktop app 或 worker 子进程——只需 `akvc-core` 包 + 三个 native 二进制文件。
 
-The build/debug/internal-architecture knowledge is in the companion skill `windows-virtual-camera`; this skill is the integration shortcut.
+构建/调试/内部架构知识在配套 skill `windows-virtual-camera` 中；本 skill 是集成捷径。
 
-## 1. Prerequisites (one-time, on the development/build machine)
+## 1. 前置准备（一次性，在开发/构建机器上）
 
-Build the three native binaries from the AK Virtual Camera project (admin VS shell):
+从 AK Virtual Camera 项目构建三个 native 二进制（管理员 VS 命令行）：
 ```bash
 cd /path/to/amaran-virtual-camera
 uv run tools/make.py configure
 uv run tools/make.py build
 ```
 
-Artifacts in `build/bin/Release/`:
-| File | Role |
+产物在 `build/bin/Release/`：
+| 文件 | 作用 |
 |---|---|
-| `akvc_helper.exe` | Owns the `Global\` shared memory; registers the MF VirtualCamera; publishes placeholder frames when no producer is active. |
-| `akvc-mf.dll` | MF VirtualCamera MediaSource DLL (loaded by `frameserver.exe`). |
-| `akvc-dshow.dll` | DirectShow source filter (for OBS/Zoom/GraphStudioNext). |
+| `akvc_helper.exe` | 拥有 `Global\` 共享内存；注册 MF 虚拟摄像头；无生产者时发布占位帧。 |
+| `akvc-mf.dll` | MF VirtualCamera MediaSource DLL（由 `frameserver.exe` 加载）。 |
+| `akvc-dshow.dll` | DirectShow source filter（供 OBS/Zoom/GraphStudioNext 使用）。 |
 
-One-time DShow registration (admin):
+一次性 DShow 注册（管理员）：
 ```bash
 uv run python -m akvc_cli register
 ```
 
-Install the Python package into your project:
+将 Python 包安装到你的项目：
 ```bash
 pip install -e /path/to/amaran-virtual-camera/camera-core
 ```
 
-## 2. Copy binaries into your project
+## 2. 复制二进制文件到你的项目
 
-Place the three files in a fixed directory (e.g. `bin/`):
+把三个文件放到固定目录（如 `bin/`）：
 ```
 your-project/
 ├── bin/
@@ -47,13 +47,13 @@ your-project/
 └── main.py
 ```
 
-Point the helper client at the exe via env var **before** importing `akvc`:
+在 import `akvc` **之前**，用环境变量告诉 helper client 去哪找 exe：
 ```python
 import os
 os.environ["AKVC_HELPER_EXE"] = os.path.join(os.path.dirname(__file__), "bin", "akvc_helper.exe")
 ```
 
-## 3. Minimal integration class
+## 3. 最小集成类
 
 ```python
 import os
@@ -68,7 +68,7 @@ from akvc.core.frame_pipeline import FramePipeline, ResizeStage, ColorConvertSta
 from akvc.core.frame_sink.windows_shm import WindowsShmSink
 
 class VirtualCamera:
-    """Push BGR numpy frames to the system-wide AK Virtual Camera."""
+    """将 BGR numpy 帧推送到系统级 AK Virtual Camera。"""
 
     WIDTH, HEIGHT, FPS = 1280, 720, 30
 
@@ -83,9 +83,9 @@ class VirtualCamera:
         self._started = False
 
     def start(self) -> bool:
-        """Start helper (registers MF device + creates Global\ SHM) and open
-        the sink. MUST run elevated (admin) — Global\ SHM needs
-        SeCreateGlobalPrivilege. Returns True on success."""
+        """启动 helper（注册 MF 设备 + 创建 Global\ 共享内存）并打开 sink。
+        必须以管理员权限运行——Global\ 共享内存需要 SeCreateGlobalPrivilege。
+        成功返回 True。"""
         if not self.helper.start():
             return False
         self.helper.register_mf()
@@ -94,8 +94,8 @@ class VirtualCamera:
         return True
 
     def push_frame(self, bgr: np.ndarray):
-        """Push one BGR frame (HxWx3 uint8, any size — auto-resized).
-        Call from your render timer / worker thread. Synchronous, ~1ms."""
+        """推送一帧 BGR 图像（HxWx3 uint8，任意尺寸——自动缩放）。
+        在渲染定时器/工作线程中调用。同步执行，约 1ms。"""
         if not self._started:
             return
         frame = Frame.from_bgr(bgr)
@@ -103,18 +103,18 @@ class VirtualCamera:
         self.sink.publish(frame)
 
     def stop(self):
-        """Stop pushing; device stays registered (helper keeps running)."""
+        """停止推流；设备保持注册（helper 继续运行）。"""
         if self._started:
             self.sink.close()
             self._started = False
 
     def shutdown(self):
-        """Fully shut down — stop helper (MF device Stop'd). Call on app exit."""
+        """完全关闭——停止 helper（MF 设备 Stop）。app 退出时调用。"""
         self.stop()
         self.helper.stop()
 ```
 
-## 4. Usage in PySide6
+## 4. 在 PySide6 中使用
 
 ```python
 from PySide6.QtCore import QTimer
@@ -124,12 +124,12 @@ import numpy as np, sys
 app = QApplication(sys.argv)
 vc = VirtualCamera()
 if not vc.start():
-    sys.exit("start failed — run as admin")
+    sys.exit("启动失败——请以管理员运行")
 
 timer = QTimer()
 seq = [0]
 def on_tick():
-    # Replace with your real frame source (QImage, OpenCV, render output…)
+    # 替换成你的真实帧源（QImage、OpenCV、渲染输出…）
     bgr = np.zeros((720, 1280, 3), dtype=np.uint8)
     bgr[:, :] = (seq[0] % 256, 100, 50)
     seq[0] += 4
@@ -141,9 +141,9 @@ rc = app.exec()
 vc.shutdown()
 ```
 
-### Feeding real frames
+### 推送真实画面
 
-From a QImage:
+从 QImage 转换：
 ```python
 def qimage_to_bgr(qimg):
     ptr = qimg.constBits()
@@ -151,71 +151,71 @@ def qimage_to_bgr(qimg):
     return arr[:, :, :3].copy()   # RGBA → BGR
 ```
 
-From OpenCV:
+从 OpenCV 转换：
 ```python
 ok, bgr = cap.read()
 if ok: vc.push_frame(bgr)
 ```
 
-## 5. Constraints & gotchas
+## 5. 约束与注意事项
 
-| Constraint | Why |
+| 约束 | 原因 |
 |---|---|
-| **Run as admin** | Helper creates `Global\akvc-frames-v1` — needs `SeCreateGlobalPrivilege`. Without admin, `CreateFileMappingW` returns error 5. |
-| **Frame size flexible** | `ResizeStage` resizes any input to 1280×720. `ColorConvertStage` converts BGR→NV12. You pass raw BGR. |
-| **`push_frame` is synchronous** | ~1ms (SHM memcpy + event signal). Safe to call from a QThread; the SHM write is lock-protected. Not safe to call from multiple threads simultaneously — serialize calls. |
-| **`register_mf` once per helper lifetime** | The helper internally tracks this; calling it again on Start→Stop→Start (source switch) is safe. |
-| **App exit must call `shutdown()`** | Otherwise the helper is orphaned and the MF device node lingers (System lifetime). `shutdown()` → `helper.stop()` → helper reads stdin EOF → clean Stop. |
-| **Restart FrameServer after replacing DLLs** | `frameserver.exe` caches `akvc-mf.dll`. After updating the DLL: `Stop-Service FrameServer; Start-Service FrameServer` (admin). |
-| **Only one AK Virtual Camera device** | The MF device (KSCATEGORY_VIDEO_CAMERA) + DShow filter (VideoInputDeviceCategory) with identical friendly name are aggregated by Win11 into one device. Do not register the DShow filter under a different name. |
-| **PnP name "Windows Virtual Camera Device"** | Cosmetic — Device Manager shows this because AddProperty can't override the MF VirtualCamera devnode name. Applications see "AK Virtual Camera" via the MF friendlyName. Ignore it. |
+| **必须管理员运行** | helper 创建 `Global\akvc-frames-v1`——需要 `SeCreateGlobalPrivilege`。非管理员运行 `CreateFileMappingW` 返回错误 5。 |
+| **帧尺寸灵活** | `ResizeStage` 自动缩放到 1280×720，`ColorConvertStage` 自动转 BGR→NV12。你只需传原始 BGR。 |
+| **`push_frame` 是同步的** | 约 1ms（共享内存 memcpy + 事件信号）。可从 QThread 调用；SHM 写入有锁保护。但不可多线程同时调用——需串行化。 |
+| **`register_mf` 每个 helper 生命周期只需一次** | helper 内部有标志跟踪；Start→Stop→Start（切换源）时重复调用是安全的。 |
+| **app 退出必须调 `shutdown()`** | 否则 helper 成为孤儿，MF 设备节点残留（System 生命周期）。`shutdown()` → `helper.stop()` → helper 读到 stdin EOF → 干净 Stop。 |
+| **替换 DLL 后需重启 FrameServer** | `frameserver.exe` 缓存 `akvc-mf.dll`。更新 DLL 后：`Stop-Service FrameServer; Start-Service FrameServer`（管理员）。 |
+| **只显示一个 AK Virtual Camera 设备** | MF 设备（KSCATEGORY_VIDEO_CAMERA）+ DShow filter（VideoInputDeviceCategory）用相同 friendly name，Win11 会聚合为一个设备。不要用不同的名字注册 DShow filter。 |
+| **PnP 名 "Windows Virtual Camera Device"** | 仅装饰性——设备管理器显示这个名字是因为 AddProperty 无法覆盖 MF VirtualCamera 设备节点名。应用通过 MF friendlyName 看到 "AK Virtual Camera"。忽略它。 |
 
-## 6. Threading model
+## 6. 线程模型
 
-The SHM sink (`WindowsShmSink.publish`) uses an internal `threading.Lock` and a Win32 mutex — so calls from one thread at a time are safe. For a GUI app:
+SHM sink（`WindowsShmSink.publish`）内部使用 `threading.Lock` + Win32 互斥锁——单线程逐次调用是安全的。GUI 应用建议：
 
-- **Simple**: call `push_frame` from a `QTimer` (runs on the GUI thread, 30fps is fine — ~1ms overhead).
-- **Heavy render**: push from a `QThread` worker to avoid blocking the GUI; queue the latest frame and let the timer pull it.
+- **简单场景**：从 `QTimer` 调用 `push_frame`（在 GUI 线程运行，30fps 没问题——约 1ms 开销）。
+- **重渲染场景**：从 `QThread` 工作线程推送，避免阻塞 GUI；缓存最新帧让定时器拉取。
 
-Do NOT start multiple `VirtualCamera` instances in the same process — the helper is a singleton (one SHM, one MF device).
+不要在同一进程启动多个 `VirtualCamera` 实例——helper 是单例（一个 SHM、一个 MF 设备）。
 
-## 7. Distribution / installer
+## 7. 分发/安装器
 
-For an installer (NSIS/MSI), you only need to:
-1. Copy the 3 binaries + your Python app.
-2. `regsvr32 /s bin\akvc-mf.dll` (optional — registers the MF CLSID in the registry; the helper does this at runtime too, but pre-registering avoids the first-run delay).
-3. `regsvr32 /s bin\akvc-dshow.dll` (registers the DShow filter + VideoInputDeviceCategory entry).
+安装器（NSIS/MSI）只需：
+1. 复制 3 个二进制文件 + 你的 Python 应用。
+2. `regsvr32 /s bin\akvc-mf.dll`（可选——在注册表注册 MF CLSID；helper 运行时也会做，但预注册可避免首次运行延迟）。
+3. `regsvr32 /s bin\akvc-dshow.dll`（注册 DShow filter + VideoInputDeviceCategory 条目）。
 
-The MF VirtualCamera itself is created at runtime by the helper (`MFCreateVirtualCamera`), not by the installer — this matches OBS 28+ behavior.
+MF VirtualCamera 本身由 helper 在运行时创建（`MFCreateVirtualCamera`），不由安装器创建——这与 OBS 28+ 行为一致。
 
-## 8. Troubleshooting
+## 8. 故障排查
 
-| Symptom | Check |
+| 症状 | 检查 |
 |---|---|
-| `start()` returns False | `AKVC_HELPER_EXE` path correct? Running as admin? |
-| Chrome can't see device | Helper running? (`vc.helper.ping()`). Restart FrameServer: `Stop-Service FrameServer; Start-Service FrameServer`. |
-| OBS can't see device | DShow registered? (`akvc_cli register` once, admin). |
-| Device visible but black | `push_frame` being called? Frame is valid BGR uint8? Helper log at `%LOCALAPPDATA%\AKVC\logs\akvc.worker.log`. |
-| Device visible but frozen | `akvc-core` version has the heartbeat fix (uses `GetSystemTimeAsFileTime`, not `perf_counter`)? |
-| Two devices in list | DShow and MF friendly names differ? Both must be "AK Virtual Camera". MF must register `KSCATEGORY_VIDEO_CAMERA`. |
-| Orphaned device after crash | `Get-PnpDevice \| Where InstanceId -like '*VCAMDEVAPI*'` then admin `pnputil /remove-device <id>`. |
-| `ImportError: akvc` | `pip install -e /path/to/camera-core` not done? |
+| `start()` 返回 False | `AKVC_HELPER_EXE` 路径对吗？是否管理员运行？ |
+| Chrome 看不到设备 | helper 在运行吗？（`vc.helper.ping()`）。重启 FrameServer：`Stop-Service FrameServer; Start-Service FrameServer`。 |
+| OBS 看不到设备 | DShow 注册了吗？（`akvc_cli register` 一次，管理员）。 |
+| 有设备但黑屏 | `push_frame` 有在调吗？帧是有效的 BGR uint8 吗？helper 日志在 `%LOCALAPPDATA%\AKVC\logs\akvc.worker.log`。 |
+| 有设备但画面不动 | `akvc-core` 版本有心跳修复吗？（用 `GetSystemTimeAsFileTime`，不是 `perf_counter`）。 |
+| 设备列表出现两个 | DShow 和 MF 的 friendly name 不同？都必须是 "AK Virtual Camera"。MF 必须注册 `KSCATEGORY_VIDEO_CAMERA`。 |
+| 崩溃后残留设备 | `Get-PnpDevice \| Where InstanceId -like '*VCAMDEVAPI*'` 然后管理员 `pnputil /remove-device <id>`。 |
+| `ImportError: akvc` | 没执行 `pip install -e /path/to/camera-core`？ |
 
-## 9. What you do NOT need
+## 9. 不需要的东西
 
-- The desktop app (`apps/desktop/`) — it's a reference UI; your app replaces it.
-- The FrameWorker subprocess (`frame_worker.py`) — that's for isolating the GUI from capture; you call `sink.publish()` directly.
-- The CLI (`apps/cli/`) — only needed for the one-time `register`/`unregister`.
-- The test patterns / USB provider — bring your own frame source.
+- desktop app（`apps/desktop/`）——它是参考 UI，你的 app 替代它。
+- FrameWorker 子进程（`frame_worker.py`）——那是为隔离 GUI 和采集设计的；你直接调 `sink.publish()` 即可。
+- CLI（`apps/cli/`）——仅一次性 `register`/`unregister` 时需要。
+- 测试图 / USB provider——自带帧源即可。
 
-## 10. File layout summary
+## 10. 文件布局总结
 
 ```
 your-project/
-├── bin/                          # copy from build/bin/Release/
+├── bin/                          # 从 build/bin/Release/ 复制
 │   ├── akvc_helper.exe
 │   ├── akvc-mf.dll
 │   └── akvc-dshow.dll
-├── your_app.py                   # sets AKVC_HELPER_EXE, imports akvc.core.*
-└── (akvc-core installed via pip install -e)
+├── your_app.py                   # 设置 AKVC_HELPER_EXE，import akvc.core.*
+└── (akvc-core 通过 pip install -e 安装)
 ```
