@@ -18,13 +18,21 @@ extern HINSTANCE g_hInst;
 
 namespace {
 
-// Default friendly name; can be overridden via HKLM\SOFTWARE\AKVC\FriendlyName
-// (written by the helper when it registers the MF device with a custom name).
-// The DShow filter reads this so both stacks show the same name for Win11
-// device aggregation.
+// Default friendly name, injected at compile time via -DAKVC_CAMERA_NAME=L"My Camera".
+// Falls back to the runtime registry value HKLM\SOFTWARE\AKVC\FriendlyName (written
+// by the helper), then to a hardcoded default.
+#ifndef AKVC_CAMERA_NAME
+#define AKVC_CAMERA_NAME_STR nullptr  // use registry / default
+#else
+#define AKVC_CAMERA_NAME_STR _T(AKVC_CAMERA_NAME)
+#endif
+
 LPCWSTR GetFriendlyName() {
+#ifdef AKVC_CAMERA_NAME
+    return AKVC_CAMERA_NAME;  // compile-time injected, always wins
+#else
     static wchar_t name_buf[256] = {};
-    if (name_buf[0]) return name_buf;  // already read
+    if (name_buf[0]) return name_buf;
     HKEY hk = nullptr;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\AKVC", 0, KEY_READ, &hk) == ERROR_SUCCESS) {
         DWORD type = 0, size = sizeof(name_buf);
@@ -38,6 +46,7 @@ LPCWSTR GetFriendlyName() {
     }
     wcscpy_s(name_buf, L"AK Virtual Camera");
     return name_buf;
+#endif
 }
 
 HRESULT WriteRegStringW(HKEY root, LPCWSTR sub, LPCWSTR name, LPCWSTR value) {

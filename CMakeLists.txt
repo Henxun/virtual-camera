@@ -39,6 +39,18 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
+# ---- Customizable camera name ----
+# Override at configure time to bake a custom display name into the binaries:
+#   cmake -DAKVC_CAMERA_NAME=L"My Product Camera" ...
+# When set, both the DShow filter and the helper default to this name.
+# When unset, the helper defaults to "AK Virtual Camera" and can be overridden
+# at runtime via register_mf(name=...); the DShow filter falls back to the
+# runtime registry value HKLM\SOFTWARE\AKVC\FriendlyName then "AK Virtual Camera".
+if(DEFINED AKVC_CAMERA_NAME)
+    message(STATUS "AKVC camera name (compile-time): ${AKVC_CAMERA_NAME}")
+    add_compile_definitions(AKVC_CAMERA_NAME=${AKVC_CAMERA_NAME})
+endif()
+
 # ---- Subprojects (Windows only in Phase 2) ----
 if(WIN32)
     add_subdirectory(virtualcam/windows/framebus)

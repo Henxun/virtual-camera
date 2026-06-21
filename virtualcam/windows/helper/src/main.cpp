@@ -92,8 +92,15 @@ bool Helper::start() {
     return true;
 }
 
+// Compile-time default camera name. Override with:
+//   cmake -DAKVC_CAMERA_NAME=L"My Camera" ...
+// or via the register_mf(name=...) pipe call at runtime.
+#ifndef AKVC_CAMERA_NAME
+#define AKVC_CAMERA_NAME L"AK Virtual Camera"
+#endif
+
 bool Helper::register_mf_virtual_camera(const wchar_t* name) {
-    if (!name || !*name) name = L"AK Virtual Camera";
+    if (!name || !*name) name = AKVC_CAMERA_NAME;
     wchar_t dll_path[MAX_PATH];
     DWORD n = ::GetModuleFileNameW(nullptr, dll_path, MAX_PATH);
     if (n == 0 || n >= MAX_PATH) return false;
