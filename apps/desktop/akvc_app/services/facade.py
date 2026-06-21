@@ -64,6 +64,13 @@ class ServiceFacade:
     def shutdown(self) -> None:
         log.info("akvc.facade.shutdown")
         self.stop()
+        # Tear down the helper so the MF VirtualCamera is cleanly removed
+        # (Stop + Remove) and no stale device node lingers.
+        try:
+            self._helper.stop()
+        except Exception:
+            pass
+        self._mf_registered = False
 
     # ---------- source management ----------
 

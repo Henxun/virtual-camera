@@ -42,7 +42,8 @@ HRESULT GetSelfPath(std::wstring& out) {
 }  // namespace
 
 extern "C" HRESULT AKVCRegisterServer() {
-    // 1. CLSID InprocServer32
+    // 1. CLSID InprocServer32 (always register the COM class so the filter
+    //    can be instantiated programmatically / via the MF↔DShow bridge).
     {
         std::wstring sub = L"CLSID\\";
         sub += AKVC_DSHOW_FILTER_CLSID_GUID_STR;
@@ -64,29 +65,22 @@ extern "C" HRESULT AKVCRegisterServer() {
     }
 
     // 2. Register filter in Video Capture category.
+    //
+    //    This is needed for DirectShow-only consumers (older OBS, Zoom,
+    //    GraphStudioNext) that do not enumerate MF VirtualCameras. The MF
+    //    VirtualCamera (akvc-mf.dll) covers Chrome/Edge/Teams/Windows Camera.
+    //    Two PnP device nodes will exist, but both carry the friendly name
+    //    "AK Virtual Camera" so the user experience is consistent.
     IFilterMapper2* pMapper = nullptr;
     HRESULT hr = CoCreateInstance(CLSID_FilterMapper2, nullptr, CLSCTX_INPROC_SERVER,
                                   IID_PPV_ARGS(&pMapper));
     if (FAILED(hr)) return hr;
-
-    REGFILTER2 rf2{};
-    rf2.dwVersion = 1;
-    rf2.dwMerit   = MERIT_DO_NOT_USE + 1;  // Capture sources commonly use this
-
-    REGFILTERPINS2 pin{};
-    pin.dwFlags = REG_PINFLAG_B_OUTPUT;
-    pin.cInstances = 1;
 
     REGPINTYPES types[3] = {
         { &MEDIATYPE_Video, &MEDIASUBTYPE_NV12  },
         { &MEDIATYPE_Video, &MEDIASUBTYPE_YUY2  },
         { &MEDIATYPE_Video, &MEDIASUBTYPE_RGB24 },
     };
-    pin.nMediaTypes = 3;
-    pin.lpMediaType = types;
-    pin.nMediums    = 0;
-    pin.lpMedium    = nullptr;
-    pin.clsPinCategory = &PIN_CATEGORY_CAPTURE;
 
     REGFILTERPINS pin1{};
     pin1.strName        = const_cast<LPWSTR>(L"Output");
@@ -99,6 +93,7 @@ extern "C" HRESULT AKVCRegisterServer() {
     pin1.nMediaTypes    = 3;
     pin1.lpMediaType    = types;
 
+    REGFILTER2 rf2{};
     rf2.dwVersion = 1;
     rf2.cPins = 1;
     rf2.rgPins = &pin1;

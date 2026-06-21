@@ -132,7 +132,8 @@ bool Helper::register_mf_virtual_camera() {
 
     // Create the virtual camera (Synthetic / non-wrapping).
     // Per the MS VirtualCamera sample:
-    //   - sourceId = the MediaSource CLSID string
+    //   - sourceId = the MediaSource CLSID string (stable → re-registration
+    //     refreshes the SAME PnP node instead of creating a new one)
     //   - categories = nullptr, count = 0
     //   - do NOT call AddDeviceSourceInfo (that's only for wrapping a physical
     //     camera, and takes the physical camera's symbolic link)
@@ -141,19 +142,60 @@ bool Helper::register_mf_virtual_camera() {
     wchar_t source_id[64];
     StringFromGUID2(CLSID_AKVCMFSource, source_id, 64);
 
+    // If a previous registration with this sourceId left a PnP device node,
+    // remove it first so AddProperty below isn't ignored by the PnP cache.
+    // MFCreateVirtualCamera returns the existing device when the sourceId
+    // matches; we remove it and recreate so the friendly name sticks.
+    {
+        IMFVirtualCamera* stale = nullptr;
+        if (SUCCEEDED(::MFCreateVirtualCamera(
+                MFVirtualCameraType_SoftwareCameraSource,
+                MFVirtualCameraLifetime_Session,
+                MFVirtualCameraAccess_CurrentUser,
+                L"AK Virtual Camera", source_id, nullptr, 0, &stale)) && stale) {
+            HRESULT hrR = stale->Remove();
+            std::fprintf(stderr, "[helper] removed stale MF device hr=0x%08lx\n", hrR);
+            stale->Release();
+            // Give the PnP manager a moment to tear down the node.
+            ::Sleep(1000);
+        }
+    }
+
+    // Register under KSCATEGORY_VIDEO_CAMERA so the MF→DShow bridge exposes
+    // the device to DirectShow consumers (OBS/Zoom/GraphStudioNext). Without
+    // this category the device is MF-only and never appears in DShow.
+    GUID categories[] = { KSCATEGORY_VIDEO_CAMERA };
     hr = ::MFCreateVirtualCamera(
         MFVirtualCameraType_SoftwareCameraSource,
-        MFVirtualCameraLifetime_Session,
-        MFVirtualCameraAccess_CurrentUser,
-        L"AK Virtual Camera",
+        MFVirtualCameraLifetime_System,     // System: device persists across helper
+        MFVirtualCameraAccess_CurrentUser,  // restarts; stable PnP node so
+        L"AK Virtual Camera",               // AddProperty friendly name sticks.
         source_id,
-        nullptr, 0,
+        categories, 1,
         &vc);
     if (FAILED(hr)) {
         std::fprintf(stderr, "[helper] MFCreateVirtualCamera failed: 0x%08lx\n", hr);
         ::MFShutdown(); ::CoUninitialize();
         return false;
     }
+
+    // Set the PnP device friendly name. AddProperty sets the devnode property;
+    // AddRegistryEntry writes it into the device's registry key so it persists.
+    // MFCreateVirtualCamera's friendlyName param only sets the MF enum name,
+    // not the PnP DEVPKEY_Device_FriendlyName (which defaults to
+    // "Windows Virtual Camera Device"). We set both to be safe.
+    // DEVPKEY_Device_FriendlyName = {a45c254e-df1c-4efd-8020-67d146a850e0} pid 14
+    static const DEVPROPKEY DEVPKEY_Device_FriendlyName = {
+        { 0xa45c254e, 0xdf1c, 0x4efd, { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } }, 14 };
+    const wchar_t* friendly = L"AK Virtual Camera";
+    ULONG friendly_bytes = static_cast<ULONG>((wcslen(friendly) + 1) * sizeof(wchar_t));
+    hr = vc->AddProperty(&DEVPKEY_Device_FriendlyName, DEVPROP_TYPE_STRING,
+                         reinterpret_cast<const BYTE*>(friendly), friendly_bytes);
+    std::fprintf(stderr, "[helper] AddProperty(FriendlyName) hr=0x%08lx\n", hr);
+    // AddRegistryEntry writes into the device registry key under HKLM.
+    hr = vc->AddRegistryEntry(L"FriendlyName", nullptr, REG_SZ,
+                              reinterpret_cast<const BYTE*>(friendly), friendly_bytes);
+    std::fprintf(stderr, "[helper] AddRegistryEntry(FriendlyName) hr=0x%08lx\n", hr);
 
     // VCAM_KIND custom attribute (must match the DLL's definition).
     // {D4A12C09-2C2A-4FC3-ABD7-ABE86BBA9A3D}, value 0 = Synthetic.
@@ -171,12 +213,15 @@ bool Helper::register_mf_virtual_camera() {
         return false;
     }
 
+    // Hold the vc reference for the helper's lifetime so the PnP device stays
+    // present. On shutdown we call Stop()+Remove() (see wait()) so no stale
+    // device node lingers after the helper exits. We intentionally leave MF
+    // initialized here (no MFShutdown) — the MF platform must stay up while
+    // mf_camera_ is alive; it's shut down in wait() after Remove().
+    mf_camera_ = vc;
     std::fprintf(stderr, "[helper] MF Virtual Camera registered successfully\n");
-    // NOTE: we intentionally leak the vc reference. The Session-lifetime
-    // virtual camera must stay alive for the helper process's lifetime;
-    // releasing it would tear down the PnP device. The OS reclaims handles
-    // when the helper process exits.
-    ::MFShutdown(); ::CoUninitialize();
+    // NOTE: CoUninitialize deferred — the pipe thread's COM apartment is
+    // cleaned up automatically when the thread exits.
     return true;
 }
 
@@ -187,6 +232,24 @@ void Helper::stop() {
 void Helper::wait() {
     if (heartbeat_thread_.joinable()) heartbeat_thread_.join();
     if (pipe_thread_.joinable()) pipe_thread_.join();
+
+    // System-lifetime device: do NOT Remove on exit. The PnP device node
+    // persists so the friendly name (set via AddProperty) stays stable and
+    // the device remains enumerated while disabled. Helper re-registration
+    // just re-Starts the existing node. Use the explicit UNREGISTER pipe
+    // command (or akvc_cli unregister) to permanently Remove the device.
+    if (mf_camera_) {
+        HRESULT hrCo = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        HRESULT hrMf = ::MFStartup(MF_VERSION, MFSTARTUP_FULL);
+        // Stop() disables the device (greyed out) but keeps the node.
+        mf_camera_->Stop();
+        mf_camera_->Release();
+        mf_camera_ = nullptr;
+        if (SUCCEEDED(hrMf)) ::MFShutdown();
+        if (SUCCEEDED(hrCo)) ::CoUninitialize();
+        std::fprintf(stderr, "[helper] MF Virtual Camera stopped (node retained)\n");
+    }
+
     producer_.close();
     std::fprintf(stderr, "[helper] stopped\n");
 }
@@ -259,11 +322,14 @@ void Helper::pipe_loop() {
         DWORD bytes_read = 0;
         BOOL ok = ::ReadFile(::GetStdHandle(STD_INPUT_HANDLE),
                              &cmd, sizeof(cmd), &bytes_read, nullptr);
-        if (!ok || bytes_read != sizeof(cmd)) {
-            if (running_) {
-                // EOF or error — just wait and retry.
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
+        if (!ok || bytes_read == 0) {
+            // stdin closed (the parent app exited) → shut down cleanly so the
+            // MF VirtualCamera is Stop()+Remove()'d and no stale device lingers.
+            std::fprintf(stderr, "[helper] stdin closed, shutting down\n");
+            stop();
+            return;
+        }
+        if (bytes_read != sizeof(cmd)) {
             continue;
         }
 

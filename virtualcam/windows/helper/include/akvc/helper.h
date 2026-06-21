@@ -83,6 +83,11 @@ private:
     std::thread heartbeat_thread_;
     std::thread pipe_thread_;
 
+    // The MF VirtualCamera reference. Held alive for the helper's lifetime so
+    // the PnP device stays present; released (Stop + Remove) on shutdown so
+    // no stale device node lingers.
+    IMFVirtualCamera* mf_camera_ = nullptr;
+
     // When the UI last checked in (from heartbeat monitoring perspective).
     // If the UI process crashes, heartbeat_ will stop updating, and after
     // AKVC_HEARTBEAT_TIMEOUT we start publishing placeholders.
