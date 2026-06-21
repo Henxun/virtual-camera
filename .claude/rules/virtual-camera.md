@@ -29,13 +29,25 @@
 - VC-W-MF-4：Edge / Chrome MFCapture 能发现并打开
 - VC-W-MF-5：UI 关闭后设备仍持续 30 秒（不变量 I1 完整满足）
 
-## 3. Phase 4 — macOS Camera Extension 上线后追加（占位）
+## 3. Phase 4 — macOS Camera Extension 上线后追加
 
-- VC-M-1：`OSSystemExtensionRequest` 安装成功（用户授权后）
-- VC-M-2：FaceTime 能发现设备
-- VC-M-3：Zoom（macOS） 能发现并打开
-- VC-M-4：Safari getUserMedia 能发现并打开
-- VC-M-5：OBS（macOS） 能发现并打开
+> 详见 `docs/phase4/verification-plan.md` 与 `.claude/rules/macos.md`。
+
+| # | 验收项 | 检查方式 | 通过判据 |
+|---|---|---|---|
+| VC-M-1 | Camera Extension 安装成功 | host app 触发 `OSSystemExtensionRequest` + 用户授权；`systemextensionsctl list` | 列表含 `com.akvc.camera-extension` 状态 `activated`；`log stream` 见 `akvc.ext.provider.start` |
+| VC-M-2 | FaceTime 能发现设备 | FaceTime → Video → Camera | 下拉含 `AK Virtual Camera`；预览正常 |
+| VC-M-3 | Zoom（macOS）能发现并打开 | Zoom → Settings → Video → Camera | 下拉含 `AK Virtual Camera`；预览正常 |
+| VC-M-4 | Safari getUserMedia 能发现并打开 | https://webrtc.github.io/samples/src/content/devices/input-output/ | Video source 下拉含 `AK Virtual Camera`；预览正常 |
+| VC-M-5 | OBS（macOS）能发现并打开 | OBS → Sources → Video Capture Device → Device | 下拉含 `AK Virtual Camera`；画面正常 |
+
+### 3.1 Phase 4 风险前置备注
+
+- **沙盒 IPC 风险**：Camera Extension 沙盒是否放行 `shm_open("/akvc-frames-v1")` 是头号未验证风险；被挡则切 XPC + IOSurface（见 `docs/phase4/implementation-plan.md` §2.3）。
+- **签名/公证前置**：System Extension 在非调试 Mac 强制 Developer ID 签名 + 公证；调试期 `systemextensionsctl developer on`。
+- **时间基红线**：macOS heartbeat 用 `CLOCK_REALTIME` 100ns ticks（Unix epoch），**不是** Windows FILETIME；禁用 `perf_counter`（详见 `macos.md` §4）。
+- VC-M-1 及 IPC 自检属纯 API/CLI 项，有 Mac 时 Agent 必须自跑，不允许标 BLOCKED。
+
 
 ## 4. 失败时的 Debug Loop（必须自动执行）
 

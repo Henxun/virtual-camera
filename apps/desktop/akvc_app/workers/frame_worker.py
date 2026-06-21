@@ -38,7 +38,7 @@ from akvc.core.frame_provider import (
     TestPatternProvider,
     UsbCameraProvider,
 )
-from akvc.core.frame_sink.windows_shm import WindowsShmSink
+from akvc.core.frame_sink import create_sink, FrameSink
 from akvc.core.metrics import Metrics
 
 log = structlog.get_logger(__name__)
@@ -72,7 +72,7 @@ def frame_worker_main(
     akvc_log.configure(level="INFO", log_dir=log_dir, component="akvc.worker")
 
     provider: Optional[FrameProvider] = None
-    sink: Optional[WindowsShmSink] = None
+    sink: Optional[FrameSink] = None
     metrics = Metrics()
 
     try:
@@ -80,10 +80,12 @@ def frame_worker_main(
         provider.open()
         log.info("akvc.worker.provider_open", source=source_id)
 
-        if sys.platform != "win32":
-            raise RuntimeError("Phase 2 worker only runs on Windows")
+        if sys.platform not in ("win32", "darwin"):
+            raise RuntimeError(
+                f"worker unsupported on platform: {sys.platform}"
+            )
 
-        sink = WindowsShmSink()
+        sink = create_sink()
         sink.open()
         log.info("akvc.worker.sink_open")
 

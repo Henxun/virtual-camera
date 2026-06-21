@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import multiprocessing as mp
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -50,8 +51,16 @@ class ServiceFacade:
         self._cmd_q: Optional[mp.Queue] = None
         self._stat_q: Optional[mp.Queue] = None
         self._preview_q: Optional[mp.Queue] = None
-        self._helper = HelperService()
-        self._mf_registered = False
+        # HelperService is Windows-only (it spawns akvc_helper.exe which
+        # registers the MF VirtualCamera and owns the Global\ shared memory).
+        # On macOS the Camera Extension is activated by a native host app
+        # (see virtualcam/macos/host); the Python side just publishes frames
+        # to the POSIX shm region. Phase 4 will wire the host-app activation
+        # through a small native bridge — until then macOS start() opens the
+        # sink directly.
+        self._is_windows = sys.platform == "win32"
+        self._helper = HelperService() if self._is_windows else None
+        self._device_registered = False
 
     # ---------- lifecycle ----------
 
@@ -65,12 +74,13 @@ class ServiceFacade:
         log.info("akvc.facade.shutdown")
         self.stop()
         # Tear down the helper so the MF VirtualCamera is cleanly removed
-        # (Stop + Remove) and no stale device node lingers.
-        try:
-            self._helper.stop()
-        except Exception:
-            pass
-        self._mf_registered = False
+        # (Stop + Remove) and no stale device node lingers. (Windows only.)
+        if self._helper is not None:
+            try:
+                self._helper.stop()
+            except Exception:
+                pass
+        self._device_registered = False
 
     # ---------- source management ----------
 
@@ -104,18 +114,28 @@ class ServiceFacade:
         if not self._state.selected_source_id:
             raise RuntimeError("no source selected")
 
-        # Ensure Helper is running (owns the Frame Bus).
-        if not self._helper.start():
-            log.warning("akvc.facade.start.helper_unavailable")
-        elif not self._mf_registered:
-            # Register MF virtual camera once (it persists for the helper's
-            # lifetime; re-registering on every Start() would conflict with
-            # the existing device and make it disappear from Chrome).
-            if self._helper.register_mf(name="AK Virtual Camera"):
-                self._mf_registered = True
-                log.info("akvc.facade.mf_registered")
-            else:
-                log.warning("akvc.facade.mf_registration_failed")
+        if self._is_windows:
+            # Ensure Helper is running (owns the Frame Bus).
+            assert self._helper is not None
+            if not self._helper.start():
+                log.warning("akvc.facade.start.helper_unavailable")
+            elif not self._device_registered:
+                # Register MF virtual camera once (it persists for the helper's
+                # lifetime; re-registering on every Start() would conflict with
+                # the existing device and make it disappear from Chrome).
+                if self._helper.register_mf(name="AK Virtual Camera"):
+                    self._device_registered = True
+                    log.info("akvc.facade.mf_registered")
+                else:
+                    log.warning("akvc.facade.mf_registration_failed")
+        else:
+            # macOS: the Camera Extension is activated out-of-band by the
+            # native host app. The Python producer just opens the POSIX shm
+            # sink inside the worker. # VERIFY: Phase 4 will add a host-app
+            # activation hook here once the Swift bridge exists.
+            if not self._device_registered:
+                log.info("akvc.facade.macos_assume_extension_active")
+                self._device_registered = True
 
         ctx = mp.get_context("spawn")
         self._cmd_q = ctx.Queue(maxsize=8)

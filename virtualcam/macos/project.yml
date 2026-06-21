@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: Apache-2.0
+# AK Virtual Camera — macOS XcodeGen project spec (Phase 4 scaffold).
+#
+# Generate the .xcodeproj on a Mac with:
+#   brew install xcodegen
+#   cd virtualcam/macos && xcodegen generate
+#
+# Then:
+#   xcodebuild -project akvc-macos.xcodeproj \
+#     -scheme akvc-camera-extension -configuration Release build
+#
+# NOTE: This is a scaffold. The system-extension product type, the
+# entitlements, and the signing settings MUST be reconciled with a real
+# Developer ID account before the extension will load on a non-debug Mac.
+# See docs/phase4/signing-notarization.md.
+
+name: akvc-macos
+options:
+  bundleIdPrefix: com.akvc
+  deploymentTarget:
+    macOS: "12.3"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "12.3"
+    # Shared headers: the protocol/error headers + the POSIX framebus header.
+    HEADER_SEARCH_PATHS:
+      - "$(SRCROOT)/framebus/include"
+      - "$(SRCROOT)/../../virtualcam/shared"
+
+targets:
+  akvc-camera-extension:
+    type: system-extension
+    platform: macOS
+    sources:
+      - path: CameraExtension
+        excludes:
+          - "Info.plist"
+          - "CameraExtension.entitlements"
+      - path: framebus/src/framebus_posix.c
+      - path: framebus/include/akvc/framebus_posix.h
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.akvc.camera-extension
+        PRODUCT_NAME: akvc-camera-extension
+        INFOPLIST_FILE: CameraExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: CameraExtension/CameraExtension.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: CameraExtension/CameraExtension-Bridging-Header.h
+        # Signing: left empty for dev builds. For distribution set
+        # DEVELOPMENT_TEAM + CODE_SIGN_IDENTITY (see signing runbook).
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: YES
+    dependencies: []
+
+  akvc-host:
+    type: application
+    platform: macOS
+    sources:
+      - path: host
+        excludes:
+          - "Info.plist"
+          - "HostApp.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.akvc.host
+        PRODUCT_NAME: akvc-host
+        INFOPLIST_FILE: host/Info.plist
+        CODE_SIGN_ENTITLEMENTS: host/HostApp.entitlements
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: YES
+    dependencies:
+      - target: akvc-camera-extension
+
+schemes:
+  akvc-camera-extension:
+    build:
+      targets:
+        akvc-camera-extension: all
+  akvc-host:
+    build:
+      targets:
+        akvc-host: all

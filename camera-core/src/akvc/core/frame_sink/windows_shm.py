@@ -28,33 +28,23 @@ import numpy as np
 from ..errors import FrameBusError, FrameBusOpenError, FrameBusSchemaMismatch
 from ..frame import Frame, FourCC
 from .base import FrameSink
+from ._protocol import (
+    AKVC_MAGIC,
+    AKVC_SCHEMA_VERSION,
+    AKVC_RING_SLOTS,
+    AKVC_DEFAULT_SLOT_SIZE,
+    RING_CONTROL_FMT,
+    RING_CONTROL_SIZE,
+    FRAME_HEADER_FMT,
+    FRAME_HEADER_SIZE,
+    REGION_SIZE,
+)
 
-# ---------- Protocol constants (mirror akvc_protocol.h) ----------
-
-AKVC_MAGIC = 0x43564B41
-AKVC_SCHEMA_VERSION = 2  # bumped for heartbeat support
-AKVC_RING_SLOTS = 4
-AKVC_DEFAULT_SLOT_SIZE = 0x00300000  # 3 MiB
-
+# ---------- Windows-only named-kernel-object names ----------
+# (Not in _protocol.py — these are Windows-specific.)
 SHM_NAME = r"akvc-frames-v1"          # multiprocessing strips Local\ prefix
 EVENT_NAME = r"Local\akvc-frames-evt-v1"
 MUTEX_NAME = r"Local\akvc-frames-mtx-v1"
-
-# Layout (cf. akvc_protocol.h):
-# RingControl: 128 bytes
-# magic(4) schema(4) slot_count(4) slot_size(4) producer_seq(8)
-# writer_pid(4) consumer_count(4) created_pts_100ns(8)
-# producer_heartbeat(8) helper_pid(4) helper_reserved(4) pad(72)
-RING_CONTROL_FMT = "<IIII Q II Q Q II 72s"
-RING_CONTROL_SIZE = struct.calcsize(RING_CONTROL_FMT)  # 128
-
-# FrameHeader: 64 bytes
-# magic, schema, fourcc, w, h, stride[2], plane_offset[2], plane_size[2],
-# flags, pts_100ns, seq_head, seq_tail, reserved[2]
-FRAME_HEADER_FMT = "<I I I I I II II II I Q Q Q II"
-FRAME_HEADER_SIZE = struct.calcsize(FRAME_HEADER_FMT)  # 64
-
-REGION_SIZE = RING_CONTROL_SIZE + AKVC_RING_SLOTS * AKVC_DEFAULT_SLOT_SIZE
 
 
 # ---------- Win32 sync primitives via ctypes ----------

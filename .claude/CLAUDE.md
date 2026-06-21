@@ -13,9 +13,10 @@
 4. `.claude/rules/debugging.md`
 5. `.claude/rules/acceptance.md`
 6. `.claude/rules/virtual-camera.md`（涉及 Windows / macOS 摄像头通路时必读）
-7. `docs/ai-workflow.md`（面向人类的总览，作为交叉校对）
+7. `.claude/rules/macos.md`（涉及 macOS 摄像头通路时必读；Phase 4 起生效）
+8. `docs/ai-workflow.md`（面向人类的总览，作为交叉校对）
 
-读取后在响应开头明确写出："Rules loaded: workflow / build-loop / debugging / acceptance / virtual-camera"，缺一不可。
+读取后在响应开头明确写出："Rules loaded: workflow / build-loop / debugging / acceptance / virtual-camera"（涉及 macOS 时追加 `/ macos`），缺一不可。
 
 ## 1. 角色与立场
 

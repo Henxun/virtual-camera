@@ -235,10 +235,10 @@ def _detect_cmake_generator() -> str:
     sys.exit(2)
 
 
-CMAKE_GENERATOR = _detect_cmake_generator()
-_NEEDS_VCVARS = "Ninja" in CMAKE_GENERATOR
+CMAKE_GENERATOR = _detect_cmake_generator() if sys.platform == "win32" else ""
+_NEEDS_VCVARS = sys.platform == "win32" and "Ninja" in CMAKE_GENERATOR
 
-# Cache loaded vcvars env (None if not needed).
+# Cache loaded vcvars env (None if not needed / not Windows).
 _VCVARS_ENV: dict[str, str] | None = None
 if _NEEDS_VCVARS:
     print("[make] loading vcvars (x64) ...")
@@ -246,6 +246,13 @@ if _NEEDS_VCVARS:
     if _VCVARS_ENV is None:
         print("[make] failed to load vcvars; aborting.", file=sys.stderr)
         sys.exit(2)
+
+# ---- macOS (Phase 4) paths ----
+MACOS_ROOT = ROOT / "virtualcam" / "macos"
+MACOS_BUILD = BUILD / "macos"
+MACOS_PROJECT_YML = MACOS_ROOT / "project.yml"
+# The Camera Extension system-extension bundle (built by xcodebuild).
+MACOS_EXT_BUNDLE = MACOS_BUILD / "Build" / "Products" / "Release" / "akvc-camera-extension.systemextension"
 
 
 def _cmake_args(source: Path, build: Path) -> list[str]:
@@ -669,23 +676,137 @@ def cmd_clean(_: argparse.Namespace) -> int:
     return 0
 
 
+# ============================================================
+# ---- macOS (Phase 4) commands ----
+# ============================================================
+# The macOS build cannot be done with CMake: a CoreMediaIO Camera Extension
+# is a System Extension target that only Xcode knows how to sign & package.
+# We drive `xcodegen` (declarative project.yml → .xcodeproj) + `xcodebuild`.
+# Phase 4 is scaffolded but NOT buildable without a Mac + Xcode + a Developer
+# ID; running these commands on macOS will surface the real toolchain errors.
+
+def _check_macos() -> None:
+    if sys.platform != "darwin":
+        print("[make] macOS build requires macOS (darwin).", file=sys.stderr)
+        sys.exit(1)
+
+
+def _require_tool(name: str) -> str:
+    """Return the path to `name` on PATH, or exit with a helpful message."""
+    p = shutil.which(name)
+    if not p:
+        print(
+            f"[make] '{name}' not found on PATH.\n"
+            f"       On macOS install it with:  brew install {name}\n"
+            f"       (Xcode itself is required for xcodebuild.)",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return p
+
+
+def cmd_configure_macos(_: argparse.Namespace) -> int:
+    _check_macos()
+    xcodegen = _require_tool("xcodegen")
+    _require_tool("xcodebuild")
+    MACOS_BUILD.mkdir(parents=True, exist_ok=True)
+    # Generate the .xcodeproj from project.yml. The generated project lives
+    # next to project.yml (in virtualcam/macos/).
+    return _run([xcodegen, "generate", "--spec", str(MACOS_PROJECT_YML)],
+                cwd=MACOS_ROOT)
+
+
+def cmd_build_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    _require_tool("xcodebuild")
+    proj = MACOS_ROOT / "akvc-macos.xcodeproj"
+    if not proj.is_dir():
+        rc = cmd_configure_macos(args)
+        if rc != 0:
+            return rc
+    # Build the Camera Extension system-extension target. The scheme name
+    # is defined in project.yml; "akvc-camera-extension" is the extension
+    # target, "akvc-host" the host app.
+    rc = _run([
+        "xcodebuild", "-project", str(proj),
+        "-scheme", "akvc-camera-extension",
+        "-configuration", "Release",
+        "-derivedDataPath", str(MACOS_BUILD),
+        "build",
+    ])
+    if rc != 0:
+        return rc
+    print(f"[make] Camera Extension bundle: {MACOS_EXT_BUNDLE}")
+    print("[make] NOTE: signing + notarization required before it will load "
+          "on a non-debug Mac. See docs/phase4/signing-notarization.md.")
+    if args.python:
+        _run([sys.executable, "-m", "pip", "install", "-e",
+              str(ROOT / "camera-core")])
+        _run([sys.executable, "-m", "pip", "install", "-e",
+              str(ROOT / "apps" / "desktop")])
+        _run([sys.executable, "-m", "pip", "install", "-e",
+              str(ROOT / "apps" / "cli")])
+    return 0
+
+
+def cmd_register_macos(_: argparse.Namespace) -> int:
+    _check_macos()
+    # The Apple-blessed way to install a Camera Extension is to run the host
+    # app, which triggers an OSSystemExtensionRequest that the user must
+    # approve. systemextensionsctl is a developer-only escape hatch.
+    print(
+        "[make] macOS Camera Extension registration is interactive:\n"
+        "  1. Build & sign the host app (cmd_build_macos + signing runbook).\n"
+        "  2. Launch the host app — it posts OSSystemExtensionRequest.\n"
+        "  3. Approve the system-extension prompt in System Settings.\n"
+        "  4. Enable the camera in System Settings > Privacy > Camera.\n"
+        "For dev-only sideloading you can also run:\n"
+        "  systemextensionsctl developer on   # one-time\n"
+        "  systemextensionsctl install <team> akvc-camera-extension"
+    )
+    return 0
+
+
+def cmd_unregister_macos(_: argparse.Namespace) -> int:
+    _check_macos()
+    print(
+        "[make] To uninstall the Camera Extension:\n"
+        "  systemextensionsctl uninstall <team-id> akvc-camera-extension\n"
+        "or delete it via System Settings > Extensions."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="make.py")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("configure").set_defaults(func=cmd_configure)
+    sub.add_parser("configure").set_defaults(func="configure")
     pb = sub.add_parser("build")
     pb.add_argument("--python", action="store_true",
                     help="also pip install -e the Python packages")
-    pb.set_defaults(func=cmd_build)
-    sub.add_parser("register").set_defaults(func=cmd_register)
-    sub.add_parser("unregister").set_defaults(func=cmd_unregister)
-    sub.add_parser("run").set_defaults(func=cmd_run)
-    sub.add_parser("test").set_defaults(func=cmd_test)
-    sub.add_parser("clean").set_defaults(func=cmd_clean)
+    pb.set_defaults(func="build")
+    sub.add_parser("register").set_defaults(func="register")
+    sub.add_parser("unregister").set_defaults(func="unregister")
+    sub.add_parser("run").set_defaults(func="run")
+    sub.add_parser("test").set_defaults(func="test")
+    sub.add_parser("clean").set_defaults(func="clean")
 
     args = p.parse_args(argv)
-    return int(args.func(args))
+
+    # Platform dispatch. Windows keeps the Phase 2/3 CMake flow; macOS uses
+    # the Phase 4 xcodebuild flow. `run`/`test` are platform-agnostic.
+    is_mac = sys.platform == "darwin"
+    table = {
+        "configure":  cmd_configure_macos if is_mac else cmd_configure,
+        "build":      cmd_build_macos     if is_mac else cmd_build,
+        "register":   cmd_register_macos  if is_mac else cmd_register,
+        "unregister": cmd_unregister_macos if is_mac else cmd_unregister,
+        "run":        cmd_run,
+        "test":       cmd_test,
+        "clean":      cmd_clean,
+    }
+    return int(table[args.func](args))
 
 
 if __name__ == "__main__":

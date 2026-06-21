@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- AK Virtual Camera — Camera Extension Info.plist (Phase 4 scaffold, VERIFY).
+     The exact keys for a CoreMediaIO Camera Extension bundle must be
+     confirmed against the Apple "CameraExtension" sample. The structure
+     below is the best-guess from the CMIO documentation; VERIFY before
+     relying on it. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- VERIFY: the CMIOExtension provider principal class. -->
+    <key>CMIOExtension</key>
+    <dict>
+        <key>Provider</key>
+        <string>$(PRODUCT_MODULE_NAME).AKVCProvider</string>
+    </dict>
+
+    <!-- VERIFY: extension point identifier for a Camera Extension.
+         Believed to be com.apple.coremediaio.extension. -->
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.coremediaio.extension</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>$(PRODUCT_MODULE_NAME).AKVCProvider</string>
+    </dict>
+
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.4.0</string>
+    <key>CFBundlePackageType</key>
+    <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+
+    <!-- Camera Extensions ship as systemextension bundles. -->
+    <key>NSExtensionPrincipalClass</key>
+    <string>$(PRODUCT_MODULE_NAME).AKVCProvider</string>
+</dict>
+</plist>

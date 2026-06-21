@@ -120,6 +120,25 @@ typedef struct akvc_ring_control {
 /* Helper service control pipe (Windows). */
 #define AKVC_HELPER_PIPE    "\\\\.\\pipe\\akvc-helper-ctrl"
 
+/* ---- macOS (Phase 4) ----
+ * POSIX shared-memory region name. The Python producer (camera-core
+ * frame_sink/macos_shm.py) creates this region with shm_open + 0666; the
+ * Camera Extension (CoreMediaIO System Extension) opens it read-only via
+ * the C shim framebus_posix.c.
+ *
+ * NOTE on the extension sandbox: whether a Camera Extension is permitted
+ * to shm_open() a user-process-created region is the #1 unverified risk
+ * of Phase 4. If the sandbox blocks it, the fallback is XPC + IOSurface
+ * (Apple-sanctioned) — see docs/phase4/implementation-plan.md Plan B.
+ *
+ * NOTE on the heartbeat time base: macOS uses CLOCK_REALTIME 100ns ticks
+ * (Unix epoch), NOT Windows FILETIME (1601 epoch). Producer
+ * (Python: time.time_ns()//100) and consumer (C: clock_gettime
+ * CLOCK_REALTIME / 100) must share this base. The producer_heartbeat
+ * field is "same-side, same-source 100ns ticks"; it is NOT required to
+ * match the Windows time base across platforms. */
+#define AKVC_POSIX_SHM_NAME "/akvc-frames-v1"
+
 /* Helper heartbeat interval: producer must update heartbeat at least this
  * often (in 100ns ticks). If helper_pid is set and heartbeat is stale for
  * longer than this, the helper publishes placeholder frames. */
