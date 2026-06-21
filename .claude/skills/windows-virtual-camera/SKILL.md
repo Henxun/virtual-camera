@@ -101,6 +101,21 @@ now_100ns = (ft.dwHighDateTime << 32) | ft.dwLowDateTime
 
 **Diagnostic**: log `hdr->flags` on every delivered frame. If you see `flags=4` (PLACEHOLDER) when the UI is actively streaming, the heartbeat time bases disagree.
 
+## 3.5 Single-device aggregation (DShow + MF → one "AK Virtual Camera")
+
+The hardest user-facing problem: registering both a DShow filter and an MF VirtualCamera makes **two** devices appear in camera lists. The fix:
+
+1. **MF VirtualCamera must register `KSCATEGORY_VIDEO_CAMERA`** as a category in `MFCreateVirtualCamera` (not `nullptr, 0`). This makes Win11's Frame Server aggregate the MF device into the DShow enumeration.
+2. **DShow filter stays registered in `VideoInputDeviceCategory`** (do NOT remove it — removing it makes OBS/GraphStudioNext unable to see the camera).
+3. **Both use the identical friendly name** ("AK Virtual Camera").
+4. With KSCATEGORY_VIDEO_CAMERA + identical name, Win11 aggregates the MF device interface and the DShow filter into **one** enumerated device. All consumers (Chrome/OBS/Teams/Zoom/Windows Camera/GraphStudioNext) see exactly one "AK Virtual Camera".
+
+**Pitfall**: the PnP device node (`SWD\VCAMDEVAPI\...`) shows "Windows Virtual Camera Device" in Device Manager — this is the system default MF VirtualCamera name and **cannot be changed via AddProperty** (the PnP cache ignores it for the devnode). But the name that **applications** see (via MF/DShow enumeration) IS the friendlyName from `MFCreateVirtualCamera` — verified via WinRT `DeviceInformation.FindAllAsync(VideoCapture)`. So "Windows Virtual Camera Device" in Device Manager is cosmetic only; ignore it.
+
+**Pitfall**: use `MFVirtualCameraLifetime_System` (not `Session`). Session-lifetime devices leave orphaned PnP nodes when the helper process is killed (taskkill / crash) — `Remove()` doesn't clean them up and `pnputil /remove-device` needs admin. System-lifetime creates a stable node; the helper just `Stop()`s on exit (keeping the node) and re-`Start`s next run. Stale nodes must be cleaned once with admin `pnputil /remove-device` or `mf_camera_->Remove()`.
+
+**Diagnostic**: `tools/diag/camera_audit.ps1` dumps PnP VCAMDEVAPI nodes, DShow VideoInputDeviceCategory instances, and COM CLSID registrations — run it to verify only one device exists.
+
 ## 4. DirectShow source filter (akvc-dshow.dll)
 
 Standard `CSource` + `CSourceStream` from the Microsoft BaseClasses (Windows-classic-samples). Key points:
@@ -123,19 +138,37 @@ This is where most implementations stall. The frame server (`frameserver.exe`) l
 ### 5.1 Registration (Synthetic / non-wrapping camera)
 
 ```cpp
+// Remove any stale same-sourceId device first so AddProperty isn't
+// ignored by the PnP cache (MFCreateVirtualCamera returns the existing
+// device when the sourceId matches).
+IMFVirtualCamera* stale = nullptr;
+if (SUCCEEDED(MFCreateVirtualCamera(..., sourceId, nullptr, 0, &stale)) && stale) {
+    stale->Remove(); stale->Release(); Sleep(1000);
+}
+
+GUID categories[] = { KSCATEGORY_VIDEO_CAMERA };
 MFCreateVirtualCamera(
     MFVirtualCameraType_SoftwareCameraSource,
-    MFVirtualCameraLifetime_Session,      // Session = dies with helper process
-    MFVirtualCameraAccess_CurrentUser,
-    L"AK Virtual Camera",
+    MFVirtualCameraLifetime_System,       // System: stable PnP node across
+    MFVirtualCameraAccess_CurrentUser,    // helper restarts; Session leaves
+    L"AK Virtual Camera",                 // orphaned nodes when killed.
     sourceId,       // = the MediaSource CLSID string "{...}"
-    nullptr, 0,     // categories MUST be null/0 (NOT KSCATEGORY_VIDEO_CAMERA)
+    categories, 1,  // KSCATEGORY_VIDEO_CAMERA — CRITICAL for DShow aggregation
     &vc);
+
+// Set PnP friendly name (AddProperty + AddRegistryEntry).
+static const DEVPROPKEY DEVPKEY_Device_FriendlyName = {
+    { 0xa45c254e, 0xdf1c, 0x4efd, {0x80,0x20,0x67,0xd1,0x46,0xa8,0x50,0xe0} }, 14 };
+vc->AddProperty(&DEVPKEY_Device_FriendlyName, DEVPROP_TYPE_STRING,
+                (const BYTE*)L"AK Virtual Camera", ...bytes...);
+vc->AddRegistryEntry(L"FriendlyName", nullptr, REG_SZ, ...);
+
 vc->SetUINT32(VCAM_KIND, 0);              // custom attr the activate reads
 // Do NOT call AddDeviceSourceInfo — that's only for wrapping a physical
 // camera (takes the physical cam's symbolic link, not a CLSID).
 vc->Start(nullptr);
 // Keep the vc reference alive for the helper's lifetime (don't Release).
+// On exit: Stop() only — do NOT Remove() a System-lifetime device.
 ```
 
 - The CLSID must be registered under `HKLM\SOFTWARE\Classes\CLSID\{...}\InprocServer32` with `ThreadingModel=Both`, or the frame server returns `CO_E_CLASSSTRING` (0x800401f3).
@@ -250,18 +283,24 @@ Stop-Service FrameServer; Start-Service FrameServer
 | `TORN_FRAME` | tear-protection used stale producer_seq | re-read producer_seq each retry |
 | video shows first frame then frozen | heartbeat time-base mismatch → placeholders overwrite real frames | see §3.4 |
 | video delivered but black | MFCreateMemoryBuffer (1D) / no SetCurrentMediaType / wrong sample time | see §5.6, §5.4, §5.6 |
+| two devices in camera list | DShow filter + MF VirtualCamera registered as separate devices | register KSCATEGORY_VIDEO_CAMERA on MF + identical friendly name; see §3.5 |
+| OBS can't see camera | MF device not aggregated to DShow (no KSCATEGORY_VIDEO_CAMERA) or DShow filter not in VideoInputDeviceCategory | see §3.5 |
+| orphaned "Windows Virtual Camera Device" PnP nodes | Session-lifetime device killed without Remove() | use System lifetime; clean stale nodes with admin `pnputil /remove-device` |
+| PnP shows "Windows Virtual Camera Device" not your name | AddProperty ignored by PnP cache for MF VirtualCamera devnode | cosmetic only — apps see the MFCreateVirtualCamera friendlyName; see §3.5 |
 
 ## 6. Helper service
 
 Owns the `Global\` SHM and registers the MF device. Responsibilities:
 - Create the file mapping / event / mutex (with a SDDL granting `AU` Authenticated Users + `AC` AppContainer + `ALL_APP_PACKAGES` so both the user-session worker and the session-0 frame server can access).
 - Monitor `producer_heartbeat`; when stale, publish placeholder frames so consumers never freeze.
-- Register the MF virtual camera once (`MFCreateVirtualCamera` + `Start`); keep the `IMFVirtualCamera` reference alive.
+- Register the MF virtual camera once (`MFCreateVirtualCamera` + `Start`); keep the `IMFVirtualCamera` reference alive. Use `System` lifetime so the PnP node is stable. On exit: `Stop()` only (do NOT `Remove()` — the node persists for next run).
+- **stdin EOF = parent app exited → clean shutdown** (stop the helper so the device is Stop'd, not orphaned). Named pipes leave stale kernel objects on kill; stdin/stdout is more robust.
+- Must run **elevated** (for `SeCreateGlobalPrivilege`). Long-term: make it a Windows service.
 - Must run **elevated** (for `SeCreateGlobalPrivilege`). Long-term: make it a Windows service.
 
-IPC: stdin/stdout binary protocol (uint32 command → uint32 response). Named pipes leave stale kernel objects when the process is killed, so stdin/stdout is more robust.
+IPC: stdin/stdout binary protocol (uint32 command → uint32 response). Named pipes leave stale kernel objects when the process is killed, so stdin/stdout is more robust. On stdin EOF (parent app closed), the helper shuts down cleanly (Stop the MF device, close SHM).
 
-Register MF **once per helper lifetime** — re-calling `MFCreateVirtualCamera` for an already-registered device makes it disappear from Chrome.
+Register MF **once per helper lifetime** — re-calling `MFCreateVirtualCamera` for an already-registered device makes it disappear from Chrome. The facade tracks a `_mf_registered` flag so Start→Stop→Start (source switching) doesn't re-register.
 
 ## 7. Operation cheat-sheet
 
