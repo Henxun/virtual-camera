@@ -52,8 +52,10 @@ public:
     // Returns false if SHM creation fails.
     bool start();
 
-    // Register the MF virtual camera with Windows.
-    bool register_mf_virtual_camera();
+    // Register the MF virtual camera with Windows. |name| is the friendly
+    // name shown to applications (Chrome/OBS/etc.). Also writes the name to
+    // HKLM\SOFTWARE\AKVC\FriendlyName so the DShow filter can read it.
+    bool register_mf_virtual_camera(const wchar_t* name);
 
     // Signal the helper to stop. Thread-safe.
     void stop();

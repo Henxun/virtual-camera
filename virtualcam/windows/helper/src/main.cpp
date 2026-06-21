@@ -92,7 +92,8 @@ bool Helper::start() {
     return true;
 }
 
-bool Helper::register_mf_virtual_camera() {
+bool Helper::register_mf_virtual_camera(const wchar_t* name) {
+    if (!name || !*name) name = L"AK Virtual Camera";
     wchar_t dll_path[MAX_PATH];
     DWORD n = ::GetModuleFileNameW(nullptr, dll_path, MAX_PATH);
     if (n == 0 || n >= MAX_PATH) return false;
@@ -142,6 +143,10 @@ bool Helper::register_mf_virtual_camera() {
     wchar_t source_id[64];
     StringFromGUID2(CLSID_AKVCMFSource, source_id, 64);
 
+    // KSCATEGORY_VIDEO_CAMERA — lets the MF→DShow bridge expose the device
+    // to DirectShow consumers (OBS/Zoom/GraphStudioNext).
+    GUID categories[] = { KSCATEGORY_VIDEO_CAMERA };
+
     // If a previous registration with this sourceId left a PnP device node,
     // remove it first so AddProperty below isn't ignored by the PnP cache.
     // MFCreateVirtualCamera returns the existing device when the sourceId
@@ -150,13 +155,12 @@ bool Helper::register_mf_virtual_camera() {
         IMFVirtualCamera* stale = nullptr;
         if (SUCCEEDED(::MFCreateVirtualCamera(
                 MFVirtualCameraType_SoftwareCameraSource,
-                MFVirtualCameraLifetime_Session,
+                MFVirtualCameraLifetime_System,
                 MFVirtualCameraAccess_CurrentUser,
-                L"AK Virtual Camera", source_id, nullptr, 0, &stale)) && stale) {
+                name, source_id, categories, 1, &stale)) && stale) {
             HRESULT hrR = stale->Remove();
             std::fprintf(stderr, "[helper] removed stale MF device hr=0x%08lx\n", hrR);
             stale->Release();
-            // Give the PnP manager a moment to tear down the node.
             ::Sleep(1000);
         }
     }
@@ -164,12 +168,11 @@ bool Helper::register_mf_virtual_camera() {
     // Register under KSCATEGORY_VIDEO_CAMERA so the MF→DShow bridge exposes
     // the device to DirectShow consumers (OBS/Zoom/GraphStudioNext). Without
     // this category the device is MF-only and never appears in DShow.
-    GUID categories[] = { KSCATEGORY_VIDEO_CAMERA };
     hr = ::MFCreateVirtualCamera(
         MFVirtualCameraType_SoftwareCameraSource,
         MFVirtualCameraLifetime_System,     // System: device persists across helper
         MFVirtualCameraAccess_CurrentUser,  // restarts; stable PnP node so
-        L"AK Virtual Camera",               // AddProperty friendly name sticks.
+        name,                               // friendly name (customizable)
         source_id,
         categories, 1,
         &vc);
@@ -177,6 +180,20 @@ bool Helper::register_mf_virtual_camera() {
         std::fprintf(stderr, "[helper] MFCreateVirtualCamera failed: 0x%08lx\n", hr);
         ::MFShutdown(); ::CoUninitialize();
         return false;
+    }
+
+    // Write the friendly name to HKLM\SOFTWARE\AKVC\FriendlyName so the DShow
+    // filter (akvc-dshow.dll) can read it at registration time and use the
+    // same name — this keeps DShow and MF names in sync for aggregation.
+    {
+        HKEY hk = nullptr;
+        if (::RegCreateKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\AKVC", 0, nullptr,
+                              0, KEY_SET_VALUE, nullptr, &hk, nullptr) == ERROR_SUCCESS) {
+            ULONG nb = static_cast<ULONG>((wcslen(name) + 1) * sizeof(wchar_t));
+            ::RegSetValueExW(hk, L"FriendlyName", 0, REG_SZ,
+                             reinterpret_cast<const BYTE*>(name), nb);
+            ::RegCloseKey(hk);
+        }
     }
 
     // Set the PnP device friendly name. AddProperty sets the devnode property;
@@ -187,14 +204,13 @@ bool Helper::register_mf_virtual_camera() {
     // DEVPKEY_Device_FriendlyName = {a45c254e-df1c-4efd-8020-67d146a850e0} pid 14
     static const DEVPROPKEY DEVPKEY_Device_FriendlyName = {
         { 0xa45c254e, 0xdf1c, 0x4efd, { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } }, 14 };
-    const wchar_t* friendly = L"AK Virtual Camera";
-    ULONG friendly_bytes = static_cast<ULONG>((wcslen(friendly) + 1) * sizeof(wchar_t));
+    ULONG friendly_bytes = static_cast<ULONG>((wcslen(name) + 1) * sizeof(wchar_t));
     hr = vc->AddProperty(&DEVPKEY_Device_FriendlyName, DEVPROP_TYPE_STRING,
-                         reinterpret_cast<const BYTE*>(friendly), friendly_bytes);
+                         reinterpret_cast<const BYTE*>(name), friendly_bytes);
     std::fprintf(stderr, "[helper] AddProperty(FriendlyName) hr=0x%08lx\n", hr);
     // AddRegistryEntry writes into the device registry key under HKLM.
     hr = vc->AddRegistryEntry(L"FriendlyName", nullptr, REG_SZ,
-                              reinterpret_cast<const BYTE*>(friendly), friendly_bytes);
+                              reinterpret_cast<const BYTE*>(name), friendly_bytes);
     std::fprintf(stderr, "[helper] AddRegistryEntry(FriendlyName) hr=0x%08lx\n", hr);
 
     // VCAM_KIND custom attribute (must match the DLL's definition).
@@ -348,7 +364,21 @@ void Helper::pipe_loop() {
                 break;
 
             case CMD_REGISTER_MF: {
-                bool ok = register_mf_virtual_camera();
+                // Read the friendly name: uint32 name_len (in wchar_t units)
+                // followed by name_len wchar_t characters (UTF-16).
+                uint32_t name_len = 0;
+                DWORD nr = 0;
+                ::ReadFile(::GetStdHandle(STD_INPUT_HANDLE),
+                           &name_len, sizeof(name_len), &nr, nullptr);
+                wchar_t name_buf[256] = {};
+                if (name_len > 0 && name_len < 256) {
+                    ::ReadFile(::GetStdHandle(STD_INPUT_HANDLE),
+                               name_buf, name_len * sizeof(wchar_t), &nr, nullptr);
+                    name_buf[name_len] = L'\0';
+                } else {
+                    wcscpy_s(name_buf, L"AK Virtual Camera");
+                }
+                bool ok = register_mf_virtual_camera(name_buf);
                 response = ok ? RSP_OK : RSP_UNKNOWN;
                 break;
             }

@@ -111,7 +111,7 @@ class ServiceFacade:
             # Register MF virtual camera once (it persists for the helper's
             # lifetime; re-registering on every Start() would conflict with
             # the existing device and make it disappear from Chrome).
-            if self._helper.register_mf():
+            if self._helper.register_mf(name="AK Virtual Camera"):
                 self._mf_registered = True
                 log.info("akvc.facade.mf_registered")
             else:

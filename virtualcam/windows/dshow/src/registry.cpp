@@ -18,7 +18,27 @@ extern HINSTANCE g_hInst;
 
 namespace {
 
-constexpr LPCWSTR kFilterFriendlyName = L"AK Virtual Camera";
+// Default friendly name; can be overridden via HKLM\SOFTWARE\AKVC\FriendlyName
+// (written by the helper when it registers the MF device with a custom name).
+// The DShow filter reads this so both stacks show the same name for Win11
+// device aggregation.
+LPCWSTR GetFriendlyName() {
+    static wchar_t name_buf[256] = {};
+    if (name_buf[0]) return name_buf;  // already read
+    HKEY hk = nullptr;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\AKVC", 0, KEY_READ, &hk) == ERROR_SUCCESS) {
+        DWORD type = 0, size = sizeof(name_buf);
+        if (RegQueryValueExW(hk, L"FriendlyName", nullptr, &type,
+                             reinterpret_cast<LPBYTE>(name_buf), &size) == ERROR_SUCCESS
+            && type == REG_SZ) {
+            RegCloseKey(hk);
+            return name_buf;
+        }
+        RegCloseKey(hk);
+    }
+    wcscpy_s(name_buf, L"AK Virtual Camera");
+    return name_buf;
+}
 
 HRESULT WriteRegStringW(HKEY root, LPCWSTR sub, LPCWSTR name, LPCWSTR value) {
     HKEY h{};
@@ -49,7 +69,7 @@ extern "C" HRESULT AKVCRegisterServer() {
         sub += AKVC_DSHOW_FILTER_CLSID_GUID_STR;
 
         HRESULT hr = WriteRegStringW(HKEY_CLASSES_ROOT, sub.c_str(), nullptr,
-                                     kFilterFriendlyName);
+                                     GetFriendlyName());
         if (FAILED(hr)) return hr;
 
         std::wstring inproc = sub + L"\\InprocServer32";
@@ -100,10 +120,10 @@ extern "C" HRESULT AKVCRegisterServer() {
 
     hr = pMapper->RegisterFilter(
         CLSID_AKVCDShowFilter,
-        kFilterFriendlyName,
+        GetFriendlyName(),
         nullptr,
         &CLSID_VideoInputDeviceCategory,
-        kFilterFriendlyName,
+        GetFriendlyName(),
         &rf2);
 
     pMapper->Release();
@@ -117,7 +137,7 @@ extern "C" HRESULT AKVCUnregisterServer() {
                                   IID_PPV_ARGS(&pMapper));
     if (SUCCEEDED(hr) && pMapper) {
         pMapper->UnregisterFilter(&CLSID_VideoInputDeviceCategory,
-                                  kFilterFriendlyName,
+                                  GetFriendlyName(),
                                   CLSID_AKVCDShowFilter);
         pMapper->Release();
     }

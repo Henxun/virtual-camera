@@ -68,11 +68,14 @@ from akvc.core.frame_pipeline import FramePipeline, ResizeStage, ColorConvertSta
 from akvc.core.frame_sink.windows_shm import WindowsShmSink
 
 class VirtualCamera:
-    """将 BGR numpy 帧推送到系统级 AK Virtual Camera。"""
+    """将 BGR numpy 帧推送到系统级虚拟摄像头。"""
 
     WIDTH, HEIGHT, FPS = 1280, 720, 30
 
-    def __init__(self):
+    def __init__(self, name: str = "AK Virtual Camera"):
+        """|name| 是应用看到的摄像头名称（Chrome/OBS 等）。DShow filter 会
+        从 HKLM\\SOFTWARE\\AKVC\\FriendlyName 读同名，保持双栈一致。"""
+        self.name = name
         self.helper = HelperService()
         self.sink = WindowsShmSink()
         self.pipeline = (
@@ -88,7 +91,7 @@ class VirtualCamera:
         成功返回 True。"""
         if not self.helper.start():
             return False
-        self.helper.register_mf()
+        self.helper.register_mf(name=self.name)
         self.sink.open()
         self._started = True
         return True

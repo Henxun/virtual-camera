@@ -128,13 +128,31 @@ class HelperService:
             "producer_seq": (seq_hi << 32) | seq_lo,
         }
 
-    def register_mf(self) -> bool:
-        """Register the MF virtual camera with Windows."""
-        data = self._transact(CMD_REGISTER_MF)
-        if data is None or len(data) < 4:
+    def register_mf(self, name: str = "AK Virtual Camera") -> bool:
+        """Register the MF virtual camera with Windows.
+
+        |name| is the friendly name shown to applications (Chrome/OBS/etc.).
+        Also writes the name to HKLM\\SOFTWARE\\AKVC\\FriendlyName so the DShow
+        filter uses the same name for Win11 device aggregation.
+        """
+        if self._proc is None or self._proc.stdin is None or self._proc.stdout is None:
             return False
-        rsp = struct.unpack("<I", data[:4])[0]
-        return rsp == RSP_OK
+        try:
+            # Send command + name_len (in wchar_t units) + UTF-16 name.
+            name_w = name[:255]  # truncate to fit helper's 256-wchar buffer
+            name_bytes = name_w.encode("utf-16-le")
+            name_len = len(name_bytes) // 2
+            self._proc.stdin.write(struct.pack("<II", CMD_REGISTER_MF, name_len))
+            if name_len > 0:
+                self._proc.stdin.write(name_bytes)
+            self._proc.stdin.flush()
+            data = self._proc.stdout.read(4)
+            if data is None or len(data) < 4:
+                return False
+            rsp = struct.unpack("<I", data[:4])[0]
+            return rsp == RSP_OK
+        except Exception:
+            return False
 
     # ---------- internal ----------
 
