@@ -1,32 +1,54 @@
 # Phase 2 — Build Guide (Windows DirectShow MVP)
 
-**Last updated**: 2026-06-19
+**Last updated**: 2026-06-22
 **Target**: Windows 10 22H2 / Windows 11 (x64)
 
-## 1. Prerequisites
+## 1. Two installation paths
 
-| Tool | Minimum version | Notes |
-|---|---|---|
-| Visual Studio 2022 (Community is fine) | 17.6 | Install workload **Desktop development with C++**; ensure **MSVC v143** and **Windows 10 SDK 10.0.22621.0** or later are checked |
-| CMake | 3.25 | Bundled with VS, or [cmake.org](https://cmake.org/) |
-| Python | 3.12.x (64-bit) | from python.org or `winget install Python.Python.3.12` |
-| Git | any | for fetching DirectShow BaseClasses |
+### 1.1 SDK consumer path (repo-root install)
+
+If you only want to consume the virtual-camera SDK from another Python 3.11–3.12 / PySide6 app:
+
+```bat
+pip install <repo-url>
+```
+
+After install you can:
+- `from akvc.sdk import VirtualCamera`
+- `akvc register`
+- `akvc status`
+- `akvc doctor`
+
+For deeper diagnosis in a development checkout:
+
+```bat
+uv run python tools/diag/dshow_enum.py
+```
+
+This path installs Python code plus packaged Windows runtime assets.
+It does **not** automatically complete privileged registration steps.
+
+If you also want desktop dependencies:
+
+```bat
+pip install "<repo-url>[desktop]"
+```
+
+### 1.2 Developer / contributor path
 
 Open a **"x64 Native Tools Command Prompt for VS 2022"** for all build steps below.
 The plain Command Prompt or PowerShell will NOT find `cl.exe` / `link.exe`.
 
-## 2. One-time setup
+## 2. One-time developer setup
 
 ```bat
 git clone <your repo> akvc
 cd akvc
 
-REM Create a virtual env for the Python side.
 python -m venv .venv
 .venv\Scripts\activate
-
-REM Pin pip and install build helpers.
 python -m pip install --upgrade pip wheel setuptools
+pip install -e .[desktop]
 ```
 
 ## 3. Configure
@@ -52,18 +74,25 @@ python tools\make.py build --python
 
 Outputs:
 
-- `build\bin\Release\akvc-dshow.dll` — the DirectShow Source Filter
-- `build\lib\Release\akvc_framebus.lib` — static lib used by the filter
-- editable installs of `akvc-core`, `akvc-desktop`, `akvc-cli` in your venv
+- `build\bin\Release\akvc-dshow.dll`
+- `build\bin\Release\akvc-mf.dll`
+- `build\bin\Release\akvc_helper.exe`
+- editable installs / local development installs for Python packages
 
 To rebuild incrementally, just `python tools\make.py build` again.
 
+### Development runtime lookup behavior
+
+During repository-local development, runtime discovery now prefers freshly built binaries under `build/bin/Release` before packaged runtime assets.
+
+That means:
+- `akvc register`
+- `akvc status`
+- the SDK runtime locator
+
+will prefer your newest local build outputs when they exist.
+
 ## 5. Register the filter
-
-Registration writes:
-
-- `HKCR\CLSID\{8E14549A-DB61-4309-AFA1-3578E927E933}\InprocServer32` → DLL path
-- DirectShow Filter Mapper entry under `Video Capture Sources`
 
 Open an **Administrator** Command Prompt:
 
@@ -71,9 +100,10 @@ Open an **Administrator** Command Prompt:
 python tools\make.py register
 ```
 
-Equivalent to:
+Or, if you installed from the root package already:
+
 ```bat
-regsvr32 /s build\bin\Release\akvc-dshow.dll
+akvc register
 ```
 
 To unregister:
@@ -86,19 +116,15 @@ python tools\make.py unregister
 
 ```bat
 akvc status
+akvc doctor
+uv run python tools/diag/dshow_enum.py
 ```
 
 Expected:
-
-```
-[akvc] CLSID:      {8E14549A-DB61-4309-AFA1-3578E927E933}
-[akvc] Inproc DLL: F:\path\to\akvc\build\bin\Release\akvc-dshow.dll
-[akvc] Build DLL:  F:\path\to\akvc\build\bin\Release\akvc-dshow.dll
-```
-
-Optional: open `graphedt.exe` (DirectShow filter graph editor, ships with
-Windows SDK), choose **Graph → Insert Filters → Video Capture Sources** and
-confirm `AK Virtual Camera` is listed.
+- the CLI can locate `akvc-dshow.dll`
+- registration state is shown correctly
+- DirectShow enumeration includes `AK Virtual Camera`
+- live frame-bus traffic is visible on `Global\\akvc-frames-v1`
 
 ## 7. Run the desktop application
 
@@ -112,32 +138,14 @@ In the UI:
 2. Click **Start** — the FrameWorker subprocess opens the source and starts publishing NV12 frames into the shared-memory ring.
 3. Open OBS / Zoom / Chrome `getUserMedia` and select **AK Virtual Camera**.
 
-## 8. Common build errors
+## 8. Common build/runtime errors
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `streams.h: No such file` | `tools/make.py configure` did not finish | rerun configure with network on |
-| `unresolved external symbol _DllMain*` | strmbase.lib not linked | rebuild — confirm `STRMBASE_LIB` path in CMake |
 | `regsvr32: 0x80040201` | bitness mismatch | run from x64 Native Tools prompt; do not use 32-bit regsvr32 (`SysWOW64`) |
-| LNK2019 about IID_IAMStreamConfig | `strmiids.lib` missing | already linked; check that linker order keeps strmbase before strmiids |
+| `RuntimeError: failed to start akvc helper` | helper path missing or insufficient privileges | verify packaged runtime exists; run elevated if required |
+| `akvc register` cannot find DLL | packaged/runtime DLL missing | reinstall package or point `AKVC_DSHOW_DLL` explicitly |
 | `RuntimeError: Cannot open USB camera` | no camera attached / driver busy | use Test Pattern source; close other camera apps |
-
-## 9. Repeatable clean build
-
-```bat
-python tools\make.py clean
-python tools\make.py configure
-python tools\make.py build --python
-```
-
-## 10. CI / non-interactive build
-
-CI systems should call `tools/make.py` exactly as developers do, but invoke
-`vcvars64.bat` first:
-
-```bat
-call "%ProgramFiles%\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
-python tools\make.py configure
-python tools\make.py build --python
-python tools\make.py test
-```
+| `dshow_enum.py` says SHM not found | app/helper not publishing yet | start the app, click Start, then rerun the diagnostic |
+| `dshow_enum.py` opens `Local\\...` in old notes | stale guidance | use `Global\\akvc-frames-v1` as the current frame-bus name |

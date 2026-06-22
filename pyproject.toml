@@ -1,10 +1,49 @@
+# SPDX-License-Identifier: Apache-2.0
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "amaran-virtual-camera"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "AK Virtual Camera SDK + Windows runtime"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11,<3.13"
+license = { text = "Apache-2.0" }
+authors = [{ name = "AK Virtual Camera Authors" }]
 dependencies = [
-    "setuptools>=82.0.1",
-    "wheel>=0.47.0",
+    "numpy>=1.26,<3.0",
+    "opencv-python-headless>=4.9,<5.0",
+    "pydantic>=2.5,<3.0",
+    "structlog>=24.1,<26",
+]
+
+[project.optional-dependencies]
+cli = []
+desktop = [
+    "PySide6>=6.6,<6.9",
+]
+all = [
+    "PySide6>=6.6,<6.9",
+]
+
+[project.scripts]
+akvc = "akvc_cli.__main__:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-dir]
+"" = "."
+
+[tool.setuptools.packages.find]
+where = ["camera-core/src", "apps/cli"]
+include = ["akvc*", "akvc_cli*"]
+
+[tool.setuptools.package-data]
+"akvc.core" = ["py.typed"]
+"akvc" = [
+    "_runtime/windows/akvc_helper.exe",
+    "_runtime/windows/akvc-mf.dll",
+    "_runtime/windows/akvc-dshow.dll",
 ]

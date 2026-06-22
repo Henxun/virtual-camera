@@ -6,7 +6,7 @@ This module is the Python *producer* counterpart of the C++ `FrameBusProducer`
 directly to a `multiprocessing.shared_memory.SharedMemory` block whose schema
 matches `akvc_protocol.h`.
 
-The C++ DShow filter (consumer) uses `OpenFileMappingW(L"Local\\akvc-frames-v1")`
+The C++ consumer side uses `OpenFileMappingW(L"Global\\akvc-frames-v1")`
 to read what we publish.
 
 Tear protection: each frame slot has a leading and trailing seq word; the

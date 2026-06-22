@@ -5,11 +5,12 @@ from __future__ import annotations
 
 import argparse
 import ctypes
-import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
+
+from akvc.runtime import find_dshow_dll
 
 CLSID = "{8E14549A-DB61-4309-AFA1-3578E927E933}"
 FRIENDLY_NAME = "AK Virtual Camera"
@@ -25,32 +26,8 @@ def _is_admin() -> bool:
 
 
 def _find_dll() -> Optional[Path]:
-    """Locate akvc-dshow.dll.
-
-    Search order:
-      1. AKVC_DSHOW_DLL env var
-      2. <repo>/build/bin/Release/akvc-dshow.dll
-      3. <repo>/build/bin/akvc-dshow.dll
-      4. C:\\Program Files\\AKVC\\bin\\akvc-dshow.dll
-    """
-    env = os.environ.get("AKVC_DSHOW_DLL")
-    if env:
-        p = Path(env)
-        if p.is_file():
-            return p
-
-    here = Path(__file__).resolve()
-    # apps/cli/akvc_cli/__main__.py → repo root is parents[3]
-    repo = here.parents[3]
-    candidates = [
-        repo / "build" / "bin" / "Release" / "akvc-dshow.dll",
-        repo / "build" / "bin" / "akvc-dshow.dll",
-        Path(r"C:\Program Files\AKVC\bin\akvc-dshow.dll"),
-    ]
-    for c in candidates:
-        if c.is_file():
-            return c
-    return None
+    """Locate akvc-dshow.dll for packaged installs and dev builds."""
+    return find_dshow_dll()
 
 
 def _read_inproc_path() -> Optional[str]:

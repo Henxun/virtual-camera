@@ -71,6 +71,8 @@ HRESULT GetSelfPath(std::wstring& out) {
 }  // namespace
 
 extern "C" HRESULT AKVCRegisterServer() {
+    HRESULT init_hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool uninit = SUCCEEDED(init_hr) || init_hr == S_FALSE;
     // 1. CLSID InprocServer32 (always register the COM class so the filter
     //    can be instantiated programmatically / via the MF↔DShow bridge).
     {
@@ -103,7 +105,10 @@ extern "C" HRESULT AKVCRegisterServer() {
     IFilterMapper2* pMapper = nullptr;
     HRESULT hr = CoCreateInstance(CLSID_FilterMapper2, nullptr, CLSCTX_INPROC_SERVER,
                                   IID_PPV_ARGS(&pMapper));
-    if (FAILED(hr)) return hr;
+    if (FAILED(hr)) {
+        if (uninit) CoUninitialize();
+        return hr;
+    }
 
     REGPINTYPES types[3] = {
         { &MEDIATYPE_Video, &MEDIASUBTYPE_NV12  },
@@ -136,6 +141,7 @@ extern "C" HRESULT AKVCRegisterServer() {
         &rf2);
 
     pMapper->Release();
+    if (uninit) CoUninitialize();
     return hr;
 }
 

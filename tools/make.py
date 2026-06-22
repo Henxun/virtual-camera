@@ -10,7 +10,7 @@ Subcommands:
   test         — pytest
   clean        — remove build/ and venv
 
-Designed to run on Windows with VS 2022 + Python 3.12. On other platforms it
+Designed to run on Windows with VS 2022 + Python 3.11–3.12. On other platforms it
 prints a friendly error.
 """
 

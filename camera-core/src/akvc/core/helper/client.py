@@ -22,8 +22,8 @@ import os
 import struct
 import subprocess
 import time
-from pathlib import Path
-from typing import Optional
+from ...runtime import find_helper_exe
+
 
 CMD_QUIT = 0x00000001
 CMD_PING = 0x00000002
@@ -35,41 +35,18 @@ RSP_PONG = 0x00000001
 RSP_UNKNOWN = 0xFFFFFFFF
 
 
-def _find_helper_exe() -> Optional[Path]:
-    env = os.environ.get("AKVC_HELPER_EXE")
-    if env:
-        p = Path(env)
-        if p.is_file():
-            return p
-
-    candidates = [
-        Path.cwd(),
-        Path(__file__).resolve().parent.parent.parent.parent.parent,
-    ]
-    for base in candidates:
-        for sub in ["build/bin/Release/akvc_helper.exe",
-                     "build/bin/akvc_helper.exe"]:
-            p = base / sub
-            if p.is_file():
-                return p
-
-    p = Path(r"C:\Program Files\AKVC\bin\akvc_helper.exe")
-    if p.is_file():
-        return p
-    return None
-
-
 class HelperService:
     """Manages the akvc_helper.exe process via stdin/stdout IPC."""
 
-    def __init__(self) -> None:
+    def __init__(self, helper_exe: str | Path | None = None) -> None:
         self._proc: Optional[subprocess.Popen] = None
+        self._helper_exe = Path(helper_exe) if helper_exe is not None else None
 
     def start(self) -> bool:
         if self.is_alive():
             return True
 
-        exe = _find_helper_exe()
+        exe = find_helper_exe(self._helper_exe)
         if exe is None:
             return False
 
