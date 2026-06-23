@@ -22,7 +22,7 @@ def main() -> int:
 
     log_dir = Path.home() / "AppData" / "Local" / "AKVC" / "logs"
     log = akvc_log.configure(level="INFO", log_dir=log_dir, component="akvc.app")
-    log.info("akvc.app.start", version="0.2.0")
+    log.info("akvc.app.start version=%s", "0.2.0")
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("AK Virtual Camera")
@@ -37,7 +37,7 @@ def main() -> int:
 
     rc = app.exec()
     facade.shutdown()
-    log.info("akvc.app.exit", code=rc)
+    log.info("akvc.app.exit code=%s", rc)
     return rc
 
 

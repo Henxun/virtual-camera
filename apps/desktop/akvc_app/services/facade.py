@@ -3,13 +3,12 @@
 
 from __future__ import annotations
 
+import logging
 import multiprocessing as mp
 import sys
 import time
 from dataclasses import dataclass, field
 from typing import Optional
-
-import structlog
 
 from akvc.core.frame_provider import (
     Pattern,
@@ -21,7 +20,7 @@ from akvc.core.helper.client import HelperService
 
 from ..workers.frame_worker import WorkerCommand, frame_worker_main
 
-log = structlog.get_logger(__name__)
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -150,7 +149,9 @@ class ServiceFacade:
         self._proc.start()
         self._state.worker_status.running = True
         log.info(
-            "akvc.facade.start", pid=self._proc.pid, source=self._state.selected_source_id
+            "akvc.facade.start pid=%s source=%s",
+            self._proc.pid,
+            self._state.selected_source_id,
         )
 
     def stop(self, timeout: float = 5.0) -> None:

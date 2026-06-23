@@ -14,7 +14,6 @@ authors = [{ name = "AK Virtual Camera Authors" }]
 dependencies = [
     "PySide6>=6.6,<6.9",
     "akvc-core==0.2.0",
-    "structlog>=24.1,<26",
 ]
 
 [project.scripts]

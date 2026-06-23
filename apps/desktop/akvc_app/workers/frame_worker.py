@@ -12,6 +12,7 @@ Lifecycle:
 
 from __future__ import annotations
 
+import logging
 import multiprocessing as mp
 import queue
 import sys
@@ -20,8 +21,6 @@ import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
-
-import structlog
 
 import numpy as np
 
@@ -41,7 +40,7 @@ from akvc.core.frame_provider import (
 from akvc.core.frame_sink import create_sink, FrameSink
 from akvc.core.metrics import Metrics
 
-log = structlog.get_logger(__name__)
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -78,7 +77,7 @@ def frame_worker_main(
     try:
         provider = _build_provider(source_id)
         provider.open()
-        log.info("akvc.worker.provider_open", source=source_id)
+        log.info("akvc.worker.provider_open source=%s", source_id)
 
         if sys.platform not in ("win32", "darwin"):
             raise RuntimeError(
@@ -150,7 +149,7 @@ def frame_worker_main(
 
     except Exception as exc:
         tb = traceback.format_exc()
-        log.error("akvc.worker.fatal", error=str(exc))
+        log.error("akvc.worker.fatal error=%s", exc)
         try:
             stat_q.put_nowait({"kind": "error", "error": str(exc), "traceback": tb})
         except Exception:
