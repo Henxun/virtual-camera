@@ -15,6 +15,10 @@ namespace akvc {
 
 namespace {
 
+constexpr wchar_t kFrameBusMappingName[] = L"Global\\akvc-frames-v1";
+constexpr wchar_t kFrameBusEventName[] = L"Global\\akvc-frames-evt-v1";
+constexpr wchar_t kFrameBusMutexName[] = L"Global\\akvc-frames-mtx-v1";
+
 struct ScopedSecurityDescriptor {
     PSECURITY_DESCRIPTOR psd = nullptr;
     SECURITY_ATTRIBUTES   sa{};
@@ -72,8 +76,13 @@ FrameBusBase::~FrameBusBase() {
 akvc_status_t FrameBusProducer::create() {
     if (is_open()) return AKVC_OK;
 
+    last_error_ = {};
+
     ScopedSecurityDescriptor sd;
-    if (!sd.init()) return translate_win32(::GetLastError());
+    if (!sd.init()) {
+        set_last_error(::GetLastError(), "ConvertStringSecurityDescriptorToSecurityDescriptorW", nullptr);
+        return translate_win32(::GetLastError());
+    }
 
     region_size_ = AKVC_DEFAULT_REGION_SIZE;
 
@@ -84,19 +93,31 @@ akvc_status_t FrameBusProducer::create() {
         PAGE_READWRITE,
         0,
         region_size_,
-        L"Global\\akvc-frames-v1");
-    if (!mapping_) return translate_win32(::GetLastError());
+        kFrameBusMappingName);
+    if (!mapping_) {
+        set_last_error(::GetLastError(), "CreateFileMappingW", kFrameBusMappingName);
+        return translate_win32(::GetLastError());
+    }
 
     base_ = reinterpret_cast<uint8_t*>(
         ::MapViewOfFile(mapping_, FILE_MAP_ALL_ACCESS, 0, 0, region_size_));
-    if (!base_) return translate_win32(::GetLastError());
+    if (!base_) {
+        set_last_error(::GetLastError(), "MapViewOfFile", kFrameBusMappingName);
+        return translate_win32(::GetLastError());
+    }
 
     event_ = ::CreateEventW(&sd.sa, /*manualReset*/ FALSE, FALSE,
-                            L"Global\\akvc-frames-evt-v1");
-    if (!event_) return translate_win32(::GetLastError());
+                            kFrameBusEventName);
+    if (!event_) {
+        set_last_error(::GetLastError(), "CreateEventW", kFrameBusEventName);
+        return translate_win32(::GetLastError());
+    }
 
-    mutex_ = ::CreateMutexW(&sd.sa, FALSE, L"Global\\akvc-frames-mtx-v1");
-    if (!mutex_) return translate_win32(::GetLastError());
+    mutex_ = ::CreateMutexW(&sd.sa, FALSE, kFrameBusMutexName);
+    if (!mutex_) {
+        set_last_error(::GetLastError(), "CreateMutexW", kFrameBusMutexName);
+        return translate_win32(::GetLastError());
+    }
 
     // Initialize control block if newly created (zeroed by OS).
     auto* ctrl = control();

@@ -39,6 +39,12 @@ struct FrameView {
     const uint8_t*             plane1 = nullptr;
 };
 
+struct FrameBusErrorInfo {
+    DWORD       win32_error = ERROR_SUCCESS;
+    const char* operation = nullptr;
+    const wchar_t* object_name = nullptr;
+};
+
 // Common base — opens or creates the named mapping/event/mutex.
 class FrameBusBase {
 public:
@@ -55,7 +61,20 @@ protected:
     HANDLE   mutex_   = nullptr;
     uint8_t* base_    = nullptr;   // pointer to mapped region
     uint32_t region_size_ = 0;
+    FrameBusErrorInfo last_error_{};
 
+    void set_last_error(DWORD win32_error,
+                        const char* operation,
+                        const wchar_t* object_name) noexcept {
+        last_error_.win32_error = win32_error;
+        last_error_.operation = operation;
+        last_error_.object_name = object_name;
+    }
+
+public:
+    const FrameBusErrorInfo& last_error() const noexcept { return last_error_; }
+
+protected:
     akvc_ring_control_t* control() noexcept {
         return reinterpret_cast<akvc_ring_control_t*>(base_);
     }

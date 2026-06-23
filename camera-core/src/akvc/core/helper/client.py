@@ -19,9 +19,13 @@ Usage:
 from __future__ import annotations
 
 import os
+import re
 import struct
 import subprocess
 import time
+from pathlib import Path
+from typing import Optional
+
 from ...runtime import find_helper_exe
 
 
@@ -34,6 +38,10 @@ RSP_OK = 0x00000000
 RSP_PONG = 0x00000001
 RSP_UNKNOWN = 0xFFFFFFFF
 
+_STARTUP_ERROR_RE = re.compile(
+    r"^\[helper\] startup_error status=(?P<status>-?\d+) op=(?P<op>\S+) win32=(?P<win32>\d+) object=(?P<object>\S+) hint=(?P<hint>.+)$"
+)
+
 
 class HelperService:
     """Manages the akvc_helper.exe process via stdin/stdout IPC."""
@@ -41,13 +49,19 @@ class HelperService:
     def __init__(self, helper_exe: str | Path | None = None) -> None:
         self._proc: Optional[subprocess.Popen] = None
         self._helper_exe = Path(helper_exe) if helper_exe is not None else None
+        self.last_error_message: Optional[str] = None
 
     def start(self) -> bool:
         if self.is_alive():
+            self.last_error_message = None
             return True
 
         exe = find_helper_exe(self._helper_exe)
         if exe is None:
+            self.last_error_message = (
+                "AKVC helper executable not found. Ensure akvc/_runtime/windows/akvc_helper.exe "
+                "is packaged with the application or set AKVC_HELPER_EXE explicitly."
+            )
             return False
 
         try:
@@ -58,14 +72,23 @@ class HelperService:
                 stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
-        except OSError:
+        except OSError as exc:
             self._proc = None
+            self.last_error_message = f"Failed to launch AKVC helper at {exe}: {exc}"
             return False
 
+        self.last_error_message = None
         for _ in range(20):
             if self.ping():
+                self.last_error_message = None
                 return True
+            if self._proc.poll() is not None:
+                self.last_error_message = self._describe_start_failure(exe)
+                self._proc = None
+                return False
             time.sleep(0.05)
+
+        self.last_error_message = self._describe_start_failure(exe)
         return False
 
     def stop(self, timeout: float = 3.0) -> None:
@@ -151,3 +174,34 @@ class HelperService:
             return data if data and len(data) == 4 else None
         except Exception:
             return None
+
+    def _describe_start_failure(self, exe: Path) -> str:
+        if self._proc is None:
+            return f"AKVC helper at {exe} did not start."
+
+        stderr = ""
+        if self._proc.stderr is not None:
+            stderr = self._proc.stderr.read().decode("utf-8", errors="replace")
+        stderr_lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+        for line in stderr_lines:
+            match = _STARTUP_ERROR_RE.match(line)
+            if not match:
+                continue
+            win32 = int(match.group("win32"))
+            obj = match.group("object")
+            op = match.group("op")
+            if win32 == 5:
+                return (
+                    "AKVC helper failed to create global frame bus objects "
+                    f"({obj} via {op}, Win32 5: access denied). "
+                    "This host environment likely needs elevated privileges on Windows."
+                )
+            return (
+                "AKVC helper failed during startup "
+                f"({obj} via {op}, Win32 {win32})."
+            )
+        if stderr_lines:
+            return f"AKVC helper failed during startup: {' | '.join(stderr_lines)}"
+        if self._proc.poll() is not None:
+            return f"AKVC helper exited during startup with code {self._proc.returncode}."
+        return f"AKVC helper at {exe} did not respond to ping during startup."

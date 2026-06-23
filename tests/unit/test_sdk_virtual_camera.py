@@ -9,10 +9,12 @@ from akvc.sdk.virtual_camera import VirtualCamera
 
 
 class FakeHelper:
-    def __init__(self, *, start_result: bool = True, ping_result: bool = True, register_result: bool = True) -> None:
+    def __init__(self, *, start_result: bool = True, ping_result: bool = True, register_result: bool = True,
+                 last_error_message: str | None = None) -> None:
         self.start_result = start_result
         self.ping_result = ping_result
         self.register_result = register_result
+        self.last_error_message = last_error_message
         self.start_calls = 0
         self.ping_calls = 0
         self.register_calls: list[str] = []
@@ -113,15 +115,23 @@ def test_push_frame_before_start_raises(monkeypatch) -> None:
         raise AssertionError("push_frame should require start()")
 
 
-def test_helper_start_failure_raises(monkeypatch) -> None:
-    helper = FakeHelper(start_result=False)
+def test_helper_start_failure_raises_actionable_message(monkeypatch) -> None:
+    helper = FakeHelper(
+        start_result=False,
+        last_error_message=(
+            "AKVC helper failed to create global frame bus objects "
+            "(Global\\akvc-frames-v1 via CreateFileMappingW, Win32 5: access denied). "
+            "This host environment likely needs elevated privileges on Windows."
+        ),
+    )
     monkeypatch.setattr("akvc.sdk.virtual_camera.HelperService", lambda helper_exe=None: helper)
 
     vc = VirtualCamera()
     try:
         vc.start()
     except RuntimeError as exc:
-        assert "failed to start" in str(exc)
+        assert "Global\\akvc-frames-v1" in str(exc)
+        assert "elevated privileges" in str(exc)
     else:
         raise AssertionError("start should fail when helper does not start")
 

@@ -72,6 +72,18 @@ bool Helper::start() {
     // 1. Create the Frame Bus (producer role).
     akvc_status_t st = producer_.create();
     if (st != AKVC_OK) {
+        const auto& err = producer_.last_error();
+        const char* hint = (err.win32_error == ERROR_ACCESS_DENIED)
+            ? "run elevated"
+            : "check runtime environment";
+        std::fprintf(
+            stderr,
+            "[helper] startup_error status=%d op=%s win32=%lu object=%S hint=%s\n",
+            st,
+            err.operation ? err.operation : "(unknown)",
+            static_cast<unsigned long>(err.win32_error),
+            err.object_name ? err.object_name : L"(none)",
+            hint);
         std::fprintf(stderr, "[helper] FrameBusProducer::create failed: %d\n", st);
         return false;
     }

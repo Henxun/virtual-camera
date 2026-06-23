@@ -59,7 +59,8 @@ class VirtualCamera:
         if self._started:
             return
         if not self._helper.start():
-            raise RuntimeError("failed to start akvc helper")
+            detail = self._helper.last_error_message or "failed to start akvc helper"
+            raise RuntimeError(detail)
         if not self._helper.ping():
             raise RuntimeError("akvc helper is not responding")
         if not self._mf_registered:
