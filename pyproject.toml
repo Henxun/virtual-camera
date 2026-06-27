@@ -46,3 +46,9 @@ include = ["akvc*", "akvc_cli*"]
     "_runtime/windows/akvc-mf.dll",
     "_runtime/windows/akvc-dshow.dll",
 ]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["__pycache__/*", "*.pyc", "*.pyo", "*.pyd"]
+
+[tool.uv]
+package = false

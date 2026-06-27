@@ -30,6 +30,7 @@ BASECLASSES = THIRD / "baseclasses"
 BASECLASSES_BUILD = BASECLASSES / "build"
 STRMBASE_LIB = BASECLASSES_BUILD / "Release" / "strmbase.lib"
 DSHOW_DLL = BUILD / "bin" / "Release" / "akvc-dshow.dll"
+PACKAGE_RUNTIME = BUILD / "package-runtime"
 
 # CMake generator. If the AKVC_CMAKE_GENERATOR env var is set, it wins;
 # otherwise we auto-detect via vswhere (covers VS 2017 / 2019 / 2022 / 2026
@@ -611,6 +612,41 @@ def _build_baseclasses() -> None:
         print(f"[make] strmbase.lib located at {STRMBASE_LIB}")
 
 
+def _ensure_windows_build_configured(args: argparse.Namespace) -> int:
+    _check_windows()
+    if not (BUILD / "CMakeCache.txt").exists():
+        rc = cmd_configure(args)
+        if rc != 0:
+            return rc
+    return 0
+
+
+def _build_windows_release(args: argparse.Namespace) -> int:
+    rc = _ensure_windows_build_configured(args)
+    if rc != 0:
+        return rc
+    return _run(["cmake", "--build", str(BUILD), "--config", "Release"],
+                env=_build_env())
+
+
+def _install_windows_runtime(prefix: Path, args: argparse.Namespace) -> int:
+    rc = _build_windows_release(args)
+    if rc != 0:
+        return rc
+    if prefix.exists():
+        _force_rmtree(prefix)
+    prefix.mkdir(parents=True, exist_ok=True)
+    return _run([
+        "cmake",
+        "--install",
+        str(BUILD),
+        "--config",
+        "Release",
+        "--prefix",
+        str(prefix),
+    ], env=_build_env())
+
+
 def cmd_configure(_: argparse.Namespace) -> int:
     _check_windows()
     _ensure_baseclasses()
@@ -621,13 +657,7 @@ def cmd_configure(_: argparse.Namespace) -> int:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    _check_windows()
-    if not (BUILD / "CMakeCache.txt").exists():
-        rc = cmd_configure(args)
-        if rc != 0:
-            return rc
-    rc = _run(["cmake", "--build", str(BUILD), "--config", "Release"],
-              env=_build_env())
+    rc = _build_windows_release(args)
     if rc != 0:
         return rc
     if args.python:
@@ -667,6 +697,11 @@ def cmd_run(_: argparse.Namespace) -> int:
 
 def cmd_test(_: argparse.Namespace) -> int:
     return _run([sys.executable, "-m", "pytest", "-q", str(ROOT / "tests" / "unit")])
+
+
+def cmd_install_runtime(args: argparse.Namespace) -> int:
+    prefix = Path(args.prefix) if args.prefix else PACKAGE_RUNTIME
+    return _install_windows_runtime(prefix, args)
 
 
 def cmd_clean(_: argparse.Namespace) -> int:
@@ -790,6 +825,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("unregister").set_defaults(func="unregister")
     sub.add_parser("run").set_defaults(func="run")
     sub.add_parser("test").set_defaults(func="test")
+    pi = sub.add_parser("install-runtime")
+    pi.add_argument("--prefix", help="installation prefix for staged runtime artifacts")
+    pi.set_defaults(func="install_runtime")
     sub.add_parser("clean").set_defaults(func="clean")
 
     args = p.parse_args(argv)
@@ -804,6 +842,7 @@ def main(argv: list[str] | None = None) -> int:
         "unregister": cmd_unregister_macos if is_mac else cmd_unregister,
         "run":        cmd_run,
         "test":       cmd_test,
+        "install_runtime": cmd_install_runtime,
         "clean":      cmd_clean,
     }
     return int(table[args.func](args))

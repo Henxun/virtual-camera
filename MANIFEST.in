@@ -1,0 +1,29 @@
+include README.md
+include LICENSE
+include NOTICE
+include pyproject.toml
+include setup.py
+
+recursive-include camera-core/src *.py
+recursive-include camera-core/src *.typed
+recursive-include apps/cli *.py
+
+prune .claude
+prune build
+prune dist
+prune out
+prune third_party
+prune docs
+prune apps/desktop
+prune installer
+prune tests
+prune .venv
+prune .venv-root-install-311
+prune .venv-root-install-312
+
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.pyd
+global-exclude *.so
+global-exclude *.dll
+global-exclude *.exe

@@ -31,3 +31,6 @@ target_link_libraries(akvc_helper PRIVATE
 set_target_properties(akvc_helper PROPERTIES
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
+
+install(TARGETS akvc_helper
+        RUNTIME DESTINATION bin)

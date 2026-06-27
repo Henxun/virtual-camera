@@ -25,7 +25,7 @@ For deeper diagnosis in a development checkout:
 uv run python tools/diag/dshow_enum.py
 ```
 
-This path installs Python code plus packaged Windows runtime assets.
+This path installs Python code and compiles the Windows runtime assets during the install/build step.
 It does **not** automatically complete privileged registration steps.
 
 If you also want desktop dependencies:
@@ -83,7 +83,7 @@ To rebuild incrementally, just `python tools\make.py build` again.
 
 ### Development runtime lookup behavior
 
-During repository-local development, runtime discovery now prefers freshly built binaries under `build/bin/Release` before packaged runtime assets.
+During repository-local development, runtime discovery now prefers freshly built binaries under `build/bin/Release`, then install-time staged binaries under `build/package-runtime/bin`, before packaged runtime assets.
 
 That means:
 - `akvc register`
@@ -144,8 +144,8 @@ In the UI:
 |---|---|---|
 | `streams.h: No such file` | `tools/make.py configure` did not finish | rerun configure with network on |
 | `regsvr32: 0x80040201` | bitness mismatch | run from x64 Native Tools prompt; do not use 32-bit regsvr32 (`SysWOW64`) |
-| `RuntimeError: failed to start akvc helper` | helper path missing or insufficient privileges | verify packaged runtime exists; run elevated if required |
-| `akvc register` cannot find DLL | packaged/runtime DLL missing | reinstall package or point `AKVC_DSHOW_DLL` explicitly |
+| `RuntimeError: failed to start akvc helper` | helper path missing or insufficient privileges | verify install-time build/staging completed; run elevated if required |
+| `akvc register` cannot find DLL | runtime DLL missing | reinstall package, rebuild runtime, or point `AKVC_DSHOW_DLL` explicitly |
 | `RuntimeError: Cannot open USB camera` | no camera attached / driver busy | use Test Pattern source; close other camera apps |
 | `dshow_enum.py` says SHM not found | app/helper not publishing yet | start the app, click Start, then rerun the diagnostic |
 | `dshow_enum.py` opens `Local\\...` in old notes | stale guidance | use `Global\\akvc-frames-v1` as the current frame-bus name |

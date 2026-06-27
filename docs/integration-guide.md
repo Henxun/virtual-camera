@@ -12,7 +12,7 @@ pip install <repo-url>
 from akvc.sdk import VirtualCamera
 ```
 
-Windows 包默认携带 runtime 二进制：
+Windows 包会在安装阶段构建并提供 runtime 二进制：
 
 - `akvc_helper.exe`
 - `akvc-mf.dll`
@@ -149,7 +149,7 @@ if ok:
 
 ### 5.1 推荐分发策略
 
-推荐把 `akvc` 当作你的应用依赖，并在你的安装包里一并带上它的 runtime 资产：
+推荐把 `akvc` 当作你的应用依赖，并在你的安装包里一并带上它安装后生成的 runtime 资产：
 
 - Python 包：`akvc`
 - runtime 二进制：

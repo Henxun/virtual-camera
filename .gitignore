@@ -11,10 +11,6 @@ dist/
 *.tlog
 *.exe
 !installer/**/*.exe
-!camera-core/src/akvc/_runtime/
-!camera-core/src/akvc/_runtime/windows/
-!camera-core/src/akvc/_runtime/windows/*.dll
-!camera-core/src/akvc/_runtime/windows/*.exe
 
 # Python
 __pycache__/

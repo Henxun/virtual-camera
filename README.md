@@ -24,7 +24,7 @@ After install you can use:
 from akvc.sdk import VirtualCamera
 ```
 
-The package includes the Windows runtime assets used by the SDK and CLI:
+The package builds and bundles the Windows runtime assets during installation:
 - `akvc_helper.exe`
 - `akvc-mf.dll`
 - `akvc-dshow.dll`
@@ -81,7 +81,7 @@ python tools\make.py register      # admin required
 python -m akvc_app
 ```
 
-During local development, runtime asset lookup prefers fresh binaries under `build/bin/Release` before packaged runtime resources.
+During local development, runtime asset lookup prefers fresh binaries under `build/bin/Release`, then the staged install-time runtime under `build/package-runtime/bin`, before packaged runtime resources.
 
 See:
 - `docs/integration-guide.md`

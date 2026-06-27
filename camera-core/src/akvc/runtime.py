@@ -10,6 +10,7 @@ from typing import Optional
 
 _RUNTIME_PACKAGE = "akvc._runtime.windows"
 _PACKAGE_RUNTIME_DIR = Path(__file__).resolve().parent / "_runtime" / "windows"
+_STAGED_RUNTIME_DIR = Path(__file__).resolve().parents[3] / "build" / "package-runtime" / "bin"
 
 
 def _resource_path(name: str) -> Optional[Path]:
@@ -54,6 +55,10 @@ def find_mf_dll(explicit: str | Path | None = None) -> Optional[Path]:
     )
 
 
+def _build_search_roots() -> list[Path]:
+    return [Path.cwd(), Path(__file__).resolve().parents[3]]
+
+
 def _find_asset(
     *,
     explicit: str | Path | None,
@@ -72,12 +77,15 @@ def _find_asset(
         if path.is_file():
             return path
 
-    candidates = [Path.cwd(), Path(__file__).resolve().parents[3]]
-    for base in candidates:
+    for base in _build_search_roots():
         for rel in build_relpaths:
             path = base / rel
             if path.is_file():
                 return path
+
+    staged = _STAGED_RUNTIME_DIR / resource_name
+    if staged.is_file():
+        return staged
 
     packaged = _resource_path(resource_name)
     if packaged is not None:
