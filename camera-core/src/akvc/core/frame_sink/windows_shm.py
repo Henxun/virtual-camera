@@ -41,10 +41,9 @@ from ._protocol import (
 )
 
 # ---------- Windows-only named-kernel-object names ----------
-# (Not in _protocol.py — these are Windows-specific.)
-SHM_NAME = r"akvc-frames-v1"          # multiprocessing strips Local\ prefix
-EVENT_NAME = r"Local\akvc-frames-evt-v1"
-MUTEX_NAME = r"Local\akvc-frames-mtx-v1"
+SHM_NAME = r"Global\akvc-frames-v1"
+EVENT_NAME = r"Global\akvc-frames-evt-v1"
+MUTEX_NAME = r"Global\akvc-frames-mtx-v1"
 
 
 # ---------- Win32 sync primitives via ctypes ----------
@@ -134,26 +133,15 @@ class WindowsShmSink(FrameSink):
         _kernel32.UnmapViewOfFile.restype = ctypes.c_int
         _kernel32.UnmapViewOfFile.argtypes = [ctypes.c_void_p]
 
-        # Phase 3: try opening existing SHM first (created by Helper).
-        # Use "Global" prefix so the MF frame server (session 0) can read
-        # frames published by the helper/worker (user session).
-        h = _kernel32.OpenFileMappingW(FILE_MAP_ALL_ACCESS, False,
-                                        "Global\\akvc-frames-v1")
-        created_by_us = False
+        # Attach-only: the elevated helper owns the Global frame bus objects.
+        h = _kernel32.OpenFileMappingW(FILE_MAP_ALL_ACCESS, False, SHM_NAME)
         if not h:
-            # Fall back to creating it ourselves (Phase 2 / no Helper).
-            size_hi = (REGION_SIZE >> 32) & 0xFFFFFFFF
-            size_lo = REGION_SIZE & 0xFFFFFFFF
-            h = _kernel32.CreateFileMappingW(
-                INVALID_HANDLE_VALUE, None, PAGE_READWRITE,
-                size_hi, size_lo, "Global\\akvc-frames-v1",
+            err = ctypes.get_last_error()
+            raise FrameBusOpenError(
+                "AKVC helper-owned shared memory is not available. "
+                "Start the helper first so it can create Global\\akvc-frames-v1.",
+                details={"win32_error": err, "object": SHM_NAME},
             )
-            if not h:
-                err = ctypes.get_last_error()
-                raise FrameBusOpenError(
-                    f"CreateFileMappingW failed (Win32 err={err})"
-                )
-            created_by_us = True
         self._mapping = h
 
         addr = _kernel32.MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, REGION_SIZE)
@@ -169,54 +157,40 @@ class WindowsShmSink(FrameSink):
         self._buf = ArrType.from_address(addr)
         self._view = memoryview(self._buf)
 
-        # Initialize / validate control block.
         ctrl = self._read_ctrl()
         if ctrl["magic"] != AKVC_MAGIC:
-            self._write_ctrl(
-                magic=AKVC_MAGIC,
-                schema=AKVC_SCHEMA_VERSION,
-                slot_count=AKVC_RING_SLOTS,
-                slot_size=AKVC_DEFAULT_SLOT_SIZE,
-                producer_seq=0,
-                writer_pid=ctypes.c_uint32(_kernel32.GetCurrentProcessId()).value
-                if hasattr(_kernel32, "GetCurrentProcessId")
-                else 0,
-                consumer_count=0,
-                created_pts_100ns=int(time.time() * 10_000_000),
+            self.close()
+            raise FrameBusSchemaMismatch(
+                "helper-owned shared region is not initialized", details=ctrl
             )
-        else:
-            if (
-                ctrl["schema"] != AKVC_SCHEMA_VERSION
-                or ctrl["slot_count"] != AKVC_RING_SLOTS
-                or ctrl["slot_size"] != AKVC_DEFAULT_SLOT_SIZE
-            ):
-                self.close()
-                raise FrameBusSchemaMismatch(
-                    "shared region schema mismatch", details=ctrl
-                )
-            self._state.producer_seq = ctrl["producer_seq"]
+        if (
+            ctrl["schema"] != AKVC_SCHEMA_VERSION
+            or ctrl["slot_count"] != AKVC_RING_SLOTS
+            or ctrl["slot_size"] != AKVC_DEFAULT_SLOT_SIZE
+        ):
+            self.close()
+            raise FrameBusSchemaMismatch(
+                "shared region schema mismatch", details=ctrl
+            )
+        self._state.producer_seq = ctrl["producer_seq"]
 
-        self._event = _kernel32.OpenEventW(0x001F0003, False,  # EVENT_ALL_ACCESS
-                                            "Global\\akvc-frames-evt-v1")
+        self._event = _kernel32.OpenEventW(0x001F0003, False, EVENT_NAME)
         if not self._event:
-            self._event = _kernel32.CreateEventW(None, 0, 0, "Global\\akvc-frames-evt-v1")
-            if not self._event:
-                err = ctypes.get_last_error()
-                self.close()
-                raise FrameBusOpenError(
-                    f"CreateEventW failed (Win32 err={err})"
-                )
+            err = ctypes.get_last_error()
+            self.close()
+            raise FrameBusOpenError(
+                "AKVC helper-owned frame event is not available.",
+                details={"win32_error": err, "object": EVENT_NAME},
+            )
 
-        self._mutex = _kernel32.OpenMutexW(0x001F0001, False,  # MUTEX_ALL_ACCESS
-                                            "Global\\akvc-frames-mtx-v1")
+        self._mutex = _kernel32.OpenMutexW(0x001F0001, False, MUTEX_NAME)
         if not self._mutex:
-            self._mutex = _kernel32.CreateMutexW(None, 0, "Global\\akvc-frames-mtx-v1")
-            if not self._mutex:
-                err = ctypes.get_last_error()
-                self.close()
-                raise FrameBusOpenError(
-                    f"CreateMutexW failed (Win32 err={err})"
-                )
+            err = ctypes.get_last_error()
+            self.close()
+            raise FrameBusOpenError(
+                "AKVC helper-owned frame mutex is not available.",
+                details={"win32_error": err, "object": MUTEX_NAME},
+            )
 
         self._opened = True
 

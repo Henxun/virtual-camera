@@ -114,19 +114,18 @@ class ServiceFacade:
             raise RuntimeError("no source selected")
 
         if self._is_windows:
-            # Ensure Helper is running (owns the Frame Bus).
             assert self._helper is not None
             if not self._helper.start():
-                log.warning("akvc.facade.start.helper_unavailable")
-            elif not self._device_registered:
-                # Register MF virtual camera once (it persists for the helper's
-                # lifetime; re-registering on every Start() would conflict with
-                # the existing device and make it disappear from Chrome).
+                detail = self._helper.last_error_message or "failed to start akvc helper"
+                raise RuntimeError(detail)
+            if not self._helper.ping():
+                raise RuntimeError("akvc helper is not responding")
+            if not self._device_registered:
                 if self._helper.register_mf(name="AK Virtual Camera"):
                     self._device_registered = True
                     log.info("akvc.facade.mf_registered")
                 else:
-                    log.warning("akvc.facade.mf_registration_failed")
+                    raise RuntimeError("failed to register MF virtual camera")
         else:
             # macOS: the Camera Extension is activated out-of-band by the
             # native host app. The Python producer just opens the POSIX shm

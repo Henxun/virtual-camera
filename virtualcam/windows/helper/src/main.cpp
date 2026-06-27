@@ -8,16 +8,19 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <cwchar>
+#include <fcntl.h>
+#include <io.h>
 #include <thread>
 #include <vector>
 
+#include <ks.h>
 #include <mfapi.h>
 #include <mfvirtualcamera.h>
-#include <ks.h>
+#include <sddl.h>
 #include <strsafe.h>
-#include <io.h>
-#include <fcntl.h>
 
 // CLSID for our MF Media Source (same as in virtualcam/windows/mf).
 // {3C2D3A1A-8E5F-4B8F-9C1A-2D7E5F1A3B4C}
@@ -29,7 +32,6 @@ namespace akvc {
 
 namespace {
 
-// Helper-local clock helpers (avoid pulling in system clock headers).
 uint64_t now_100ns() noexcept {
     FILETIME ft;
     ::GetSystemTimePreciseAsFileTime(&ft);
@@ -39,27 +41,84 @@ uint64_t now_100ns() noexcept {
     return u.QuadPart;
 }
 
-// Named pipe name (local scope, single-instance).
-const wchar_t* kPipeName = L"\\\\.\\pipe\\akvc-helper-ctrl";
+const wchar_t* kDefaultPipeName = L"\\\\.\\pipe\\akvc-helper-ctrl";
 
-// Time between heartbeat checks.
 constexpr DWORD kHeartbeatCheckMs = 50;
 
-// ── Pipe command protocol ──
-// Commands are sent as a single uint32_t (little-endian):
 enum PipeCommand : uint32_t {
-    CMD_QUIT         = 0x00000001u,   // Graceful shutdown
-    CMD_PING         = 0x00000002u,   // Health check (reply: "PONG")
-    CMD_STATUS       = 0x00000003u,   // Return status info
-    CMD_REGISTER_MF  = 0x00000004u,   // Register MF virtual camera
+    CMD_QUIT         = 0x00000001u,
+    CMD_PING         = 0x00000002u,
+    CMD_STATUS       = 0x00000003u,
+    CMD_REGISTER_MF  = 0x00000004u,
 };
 
-// Response codes
 enum PipeResponse : uint32_t {
     RSP_OK       = 0x00000000u,
     RSP_PONG     = 0x00000001u,
     RSP_UNKNOWN  = 0xFFFFFFFFu,
 };
+
+Helper* g_helper_instance = nullptr;
+
+BOOL WINAPI console_ctrl_handler(DWORD ctrl_type) {
+    if ((ctrl_type == CTRL_C_EVENT || ctrl_type == CTRL_BREAK_EVENT || ctrl_type == CTRL_CLOSE_EVENT) &&
+        g_helper_instance != nullptr) {
+        g_helper_instance->stop();
+        return TRUE;
+    }
+    return FALSE;
+}
+
+bool read_exact(HANDLE handle, void* buffer, DWORD size) {
+    auto* out = static_cast<uint8_t*>(buffer);
+    DWORD total = 0;
+    while (total < size) {
+        DWORD chunk = 0;
+        if (!::ReadFile(handle, out + total, size - total, &chunk, nullptr) || chunk == 0) {
+            return false;
+        }
+        total += chunk;
+    }
+    return true;
+}
+
+bool write_exact(HANDLE handle, const void* buffer, DWORD size) {
+    const auto* in = static_cast<const uint8_t*>(buffer);
+    DWORD total = 0;
+    while (total < size) {
+        DWORD chunk = 0;
+        if (!::WriteFile(handle, in + total, size - total, &chunk, nullptr) || chunk == 0) {
+            return false;
+        }
+        total += chunk;
+    }
+    return true;
+}
+
+struct ScopedSecurityDescriptor {
+    PSECURITY_DESCRIPTOR sd = nullptr;
+    ~ScopedSecurityDescriptor() {
+        if (sd != nullptr) {
+            ::LocalFree(sd);
+        }
+    }
+};
+
+bool build_pipe_security_attributes(SECURITY_ATTRIBUTES& sa, ScopedSecurityDescriptor& scoped) {
+    constexpr wchar_t kPipeSddl[] =
+        L"D:(A;;GA;;;BA)(A;;GA;;;SY)(A;;GRGW;;;AU)(A;;GRGW;;;AC)(A;;GRGW;;;S-1-15-2-1)(A;;GRGW;;;S-1-15-2-2)";
+    if (!::ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            kPipeSddl,
+            SDDL_REVISION_1,
+            &scoped.sd,
+            nullptr)) {
+        return false;
+    }
+    sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = scoped.sd;
+    sa.bInheritHandle = FALSE;
+    return true;
+}
 
 }  // namespace
 
@@ -69,7 +128,23 @@ Helper::~Helper() {
 }
 
 bool Helper::start() {
-    // 1. Create the Frame Bus (producer role).
+    if (pipe_name_.empty()) {
+        pipe_name_ = kDefaultPipeName;
+    }
+
+    if (parent_pid_ != 0) {
+        parent_process_ = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, parent_pid_);
+        if (parent_process_ == nullptr) {
+            const DWORD win32 = ::GetLastError();
+            std::fprintf(
+                stderr,
+                "[helper] startup_error status=%d op=OpenProcess win32=%lu object=parent-pid hint=check parent pid\n",
+                -1,
+                static_cast<unsigned long>(win32));
+            return false;
+        }
+    }
+
     akvc_status_t st = producer_.create();
     if (st != AKVC_OK) {
         const auto& err = producer_.last_error();
@@ -85,34 +160,50 @@ bool Helper::start() {
             err.object_name ? err.object_name : L"(none)",
             hint);
         std::fprintf(stderr, "[helper] FrameBusProducer::create failed: %d\n", st);
+        if (parent_process_ != nullptr) {
+            ::CloseHandle(parent_process_);
+            parent_process_ = nullptr;
+        }
         return false;
     }
 
-    // 2. Mark helper_pid in control block.
     producer_.ctrl()->helper_pid = ::GetCurrentProcessId();
-
-    // 3. Set stdin to binary mode for control commands.
-    _setmode(_fileno(stdin), _O_BINARY);
-
     running_ = true;
 
-    // 4. Start threads.
     heartbeat_thread_ = std::thread(&Helper::heartbeat_loop, this);
     pipe_thread_ = std::thread(&Helper::pipe_loop, this);
 
-    std::fprintf(stderr, "[helper] started (PID=%lu)\n", ::GetCurrentProcessId());
+    std::fprintf(
+        stderr,
+        "[helper] started (PID=%lu pipe=%S parent_pid=%lu)\n",
+        ::GetCurrentProcessId(),
+        pipe_name_.c_str(),
+        static_cast<unsigned long>(parent_pid_));
     return true;
 }
 
-// Compile-time default camera name. Override with:
-//   cmake -DAKVC_CAMERA_NAME=L"My Camera" ...
-// or via the register_mf(name=...) pipe call at runtime.
 #ifndef AKVC_CAMERA_NAME
 #define AKVC_CAMERA_NAME L"AK Virtual Camera"
 #endif
 
 bool Helper::register_mf_virtual_camera(const wchar_t* name) {
-    if (!name || !*name) name = AKVC_CAMERA_NAME;
+    if (!name || !*name) {
+        name = AKVC_CAMERA_NAME;
+    }
+
+    if (mf_camera_ != nullptr) {
+        if (mf_camera_name_.empty() || _wcsicmp(mf_camera_name_.c_str(), name) == 0) {
+            std::fprintf(stderr, "[helper] MF Virtual Camera already registered\n");
+            return true;
+        }
+        std::fprintf(
+            stderr,
+            "[helper] MF Virtual Camera name mismatch existing=%S requested=%S\n",
+            mf_camera_name_.c_str(),
+            name);
+        return false;
+    }
+
     wchar_t dll_path[MAX_PATH];
     DWORD n = ::GetModuleFileNameW(nullptr, dll_path, MAX_PATH);
     if (n == 0 || n >= MAX_PATH) return false;
@@ -127,10 +218,9 @@ bool Helper::register_mf_virtual_camera(const wchar_t* name) {
 
     HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (FAILED(hr)) return false;
-    hr = ::MFStartup(MF_VERSION, MFSTARTUP_FULL);  // FULL needed for sensor group APIs
+    hr = ::MFStartup(MF_VERSION, MFSTARTUP_FULL);
     if (FAILED(hr)) { ::CoUninitialize(); return false; }
 
-    // Register CLSID in registry so frameserver can find our DLL.
     wchar_t clsid_str[64];
     StringFromGUID2(CLSID_AKVCMFSource, clsid_str, 64);
     wchar_t subkey[256];
@@ -150,26 +240,11 @@ bool Helper::register_mf_virtual_camera(const wchar_t* name) {
         ::RegCloseKey(key);
     }
 
-    // Create the virtual camera (Synthetic / non-wrapping).
-    // Per the MS VirtualCamera sample:
-    //   - sourceId = the MediaSource CLSID string (stable → re-registration
-    //     refreshes the SAME PnP node instead of creating a new one)
-    //   - categories = nullptr, count = 0
-    //   - do NOT call AddDeviceSourceInfo (that's only for wrapping a physical
-    //     camera, and takes the physical camera's symbolic link)
-    //   - set VCAM_KIND = Synthetic so the activate creates a SimpleMediaSource
     IMFVirtualCamera* vc = nullptr;
     wchar_t source_id[64];
     StringFromGUID2(CLSID_AKVCMFSource, source_id, 64);
-
-    // KSCATEGORY_VIDEO_CAMERA — lets the MF→DShow bridge expose the device
-    // to DirectShow consumers (OBS/Zoom/GraphStudioNext).
     GUID categories[] = { KSCATEGORY_VIDEO_CAMERA };
 
-    // If a previous registration with this sourceId left a PnP device node,
-    // remove it first so AddProperty below isn't ignored by the PnP cache.
-    // MFCreateVirtualCamera returns the existing device when the sourceId
-    // matches; we remove it and recreate so the friendly name sticks.
     {
         IMFVirtualCamera* stale = nullptr;
         if (SUCCEEDED(::MFCreateVirtualCamera(
@@ -184,14 +259,11 @@ bool Helper::register_mf_virtual_camera(const wchar_t* name) {
         }
     }
 
-    // Register under KSCATEGORY_VIDEO_CAMERA so the MF→DShow bridge exposes
-    // the device to DirectShow consumers (OBS/Zoom/GraphStudioNext). Without
-    // this category the device is MF-only and never appears in DShow.
     hr = ::MFCreateVirtualCamera(
         MFVirtualCameraType_SoftwareCameraSource,
-        MFVirtualCameraLifetime_System,     // System: device persists across helper
-        MFVirtualCameraAccess_CurrentUser,  // restarts; stable PnP node so
-        name,                               // friendly name (customizable)
+        MFVirtualCameraLifetime_System,
+        MFVirtualCameraAccess_CurrentUser,
+        name,
         source_id,
         categories, 1,
         &vc);
@@ -201,9 +273,6 @@ bool Helper::register_mf_virtual_camera(const wchar_t* name) {
         return false;
     }
 
-    // Write the friendly name to HKLM\SOFTWARE\AKVC\FriendlyName so the DShow
-    // filter (akvc-dshow.dll) can read it at registration time and use the
-    // same name — this keeps DShow and MF names in sync for aggregation.
     {
         HKEY hk = nullptr;
         if (::RegCreateKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\AKVC", 0, nullptr,
@@ -215,25 +284,16 @@ bool Helper::register_mf_virtual_camera(const wchar_t* name) {
         }
     }
 
-    // Set the PnP device friendly name. AddProperty sets the devnode property;
-    // AddRegistryEntry writes it into the device's registry key so it persists.
-    // MFCreateVirtualCamera's friendlyName param only sets the MF enum name,
-    // not the PnP DEVPKEY_Device_FriendlyName (which defaults to
-    // "Windows Virtual Camera Device"). We set both to be safe.
-    // DEVPKEY_Device_FriendlyName = {a45c254e-df1c-4efd-8020-67d146a850e0} pid 14
     static const DEVPROPKEY DEVPKEY_Device_FriendlyName = {
         { 0xa45c254e, 0xdf1c, 0x4efd, { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } }, 14 };
     ULONG friendly_bytes = static_cast<ULONG>((wcslen(name) + 1) * sizeof(wchar_t));
     hr = vc->AddProperty(&DEVPKEY_Device_FriendlyName, DEVPROP_TYPE_STRING,
                          reinterpret_cast<const BYTE*>(name), friendly_bytes);
     std::fprintf(stderr, "[helper] AddProperty(FriendlyName) hr=0x%08lx\n", hr);
-    // AddRegistryEntry writes into the device registry key under HKLM.
     hr = vc->AddRegistryEntry(L"FriendlyName", nullptr, REG_SZ,
                               reinterpret_cast<const BYTE*>(name), friendly_bytes);
     std::fprintf(stderr, "[helper] AddRegistryEntry(FriendlyName) hr=0x%08lx\n", hr);
 
-    // VCAM_KIND custom attribute (must match the DLL's definition).
-    // {D4A12C09-2C2A-4FC3-ABD7-ABE86BBA9A3D}, value 0 = Synthetic.
     static const GUID VCAM_KIND = {
         0xd4a12c09, 0x2c2a, 0x4fc3,
         {0xab, 0xd7, 0xab, 0xe8, 0x6b, 0xba, 0x9a, 0x3d}
@@ -248,15 +308,9 @@ bool Helper::register_mf_virtual_camera(const wchar_t* name) {
         return false;
     }
 
-    // Hold the vc reference for the helper's lifetime so the PnP device stays
-    // present. On shutdown we call Stop()+Remove() (see wait()) so no stale
-    // device node lingers after the helper exits. We intentionally leave MF
-    // initialized here (no MFShutdown) — the MF platform must stay up while
-    // mf_camera_ is alive; it's shut down in wait() after Remove().
     mf_camera_ = vc;
+    mf_camera_name_ = name;
     std::fprintf(stderr, "[helper] MF Virtual Camera registered successfully\n");
-    // NOTE: CoUninitialize deferred — the pipe thread's COM apartment is
-    // cleaned up automatically when the thread exits.
     return true;
 }
 
@@ -268,36 +322,38 @@ void Helper::wait() {
     if (heartbeat_thread_.joinable()) heartbeat_thread_.join();
     if (pipe_thread_.joinable()) pipe_thread_.join();
 
-    // System-lifetime device: do NOT Remove on exit. The PnP device node
-    // persists so the friendly name (set via AddProperty) stays stable and
-    // the device remains enumerated while disabled. Helper re-registration
-    // just re-Starts the existing node. Use the explicit UNREGISTER pipe
-    // command (or akvc_cli unregister) to permanently Remove the device.
     if (mf_camera_) {
         HRESULT hrCo = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         HRESULT hrMf = ::MFStartup(MF_VERSION, MFSTARTUP_FULL);
-        // Stop() disables the device (greyed out) but keeps the node.
         mf_camera_->Stop();
         mf_camera_->Release();
         mf_camera_ = nullptr;
+        mf_camera_name_.clear();
         if (SUCCEEDED(hrMf)) ::MFShutdown();
         if (SUCCEEDED(hrCo)) ::CoUninitialize();
         std::fprintf(stderr, "[helper] MF Virtual Camera stopped (node retained)\n");
+    }
+
+    if (parent_process_ != nullptr) {
+        ::CloseHandle(parent_process_);
+        parent_process_ = nullptr;
     }
 
     producer_.close();
     std::fprintf(stderr, "[helper] stopped\n");
 }
 
-// ── Heartbeat monitor ──
-
 void Helper::heartbeat_loop() {
-    // Initial placeholder frames until UI connects.
     uint64_t last_placeholder_100ns = 0;
-    const uint64_t placeholder_interval = 10000000ULL / kPlaceholderFps;  // 100ms in 100ns
+    const uint64_t placeholder_interval = 10000000ULL / kPlaceholderFps;
 
     while (running_) {
-        // Read heartbeat from control block.
+        if (!is_parent_alive()) {
+            std::fprintf(stderr, "[helper] parent exited, shutting down\n");
+            stop();
+            break;
+        }
+
         auto* ctrl = producer_.ctrl();
         uint64_t hb = ctrl->producer_heartbeat;
         uint32_t wp = ctrl->writer_pid;
@@ -306,10 +362,8 @@ void Helper::heartbeat_loop() {
         uint64_t elapsed = now - hb;
 
         if (wp != 0 && elapsed < AKVC_HEARTBEAT_TIMEOUT) {
-            // UI is alive.
             ui_connected_ = true;
         } else {
-            // UI has gone away (or never connected) — publish placeholders.
             if (now - last_placeholder_100ns >= placeholder_interval) {
                 publish_placeholder();
                 last_placeholder_100ns = now;
@@ -317,15 +371,12 @@ void Helper::heartbeat_loop() {
             ui_connected_ = false;
         }
 
-        // Update helper_pid in control block.
         ctrl->helper_pid = ::GetCurrentProcessId();
-
         std::this_thread::sleep_for(std::chrono::milliseconds(kHeartbeatCheckMs));
     }
 }
 
 void Helper::publish_placeholder() {
-    // 1280x720 NV12
     constexpr uint32_t w = 1280;
     constexpr uint32_t h = 720;
     uint64_t now = now_100ns();
@@ -341,7 +392,6 @@ void Helper::publish_placeholder() {
     hdr.flags         = AKVC_FLAG_PLACEHOLDER;
     hdr.pts_100ns     = now;
 
-    // Y=0 (black), UV=128 (neutral chroma)
     static thread_local std::vector<uint8_t> y_buf(w * h, 0);
     static thread_local std::vector<uint8_t> uv_buf(w * h / 2, 128);
 
@@ -349,108 +399,230 @@ void Helper::publish_placeholder() {
     producer_.publish(hdr, planes);
 }
 
-// ── stdin command reader ──
+bool Helper::is_parent_alive() const {
+    if (parent_pid_ == 0) {
+        return true;
+    }
+    if (parent_process_ == nullptr) {
+        std::fprintf(stderr, "[helper] parent handle missing for pid=%lu\n", static_cast<unsigned long>(parent_pid_));
+        return false;
+    }
+
+    DWORD exit_code = 0;
+    if (!::GetExitCodeProcess(parent_process_, &exit_code)) {
+        std::fprintf(stderr, "[helper] GetExitCodeProcess(parent=%lu) failed err=%lu\n", static_cast<unsigned long>(parent_pid_), static_cast<unsigned long>(::GetLastError()));
+        return false;
+    }
+    if (exit_code != STILL_ACTIVE) {
+        std::fprintf(stderr, "[helper] parent pid=%lu exit_code=%lu\n", static_cast<unsigned long>(parent_pid_), static_cast<unsigned long>(exit_code));
+        return false;
+    }
+    return true;
+}
+
+bool Helper::handle_client(HANDLE pipe) {
+    uint32_t cmd = 0;
+    if (!read_exact(pipe, &cmd, sizeof(cmd))) {
+        return false;
+    }
+
+    switch (static_cast<PipeCommand>(cmd)) {
+        case CMD_QUIT: {
+            const uint32_t response = RSP_OK;
+            write_exact(pipe, &response, sizeof(response));
+            stop();
+            return false;
+        }
+
+        case CMD_PING: {
+            const uint32_t response = RSP_PONG;
+            return write_exact(pipe, &response, sizeof(response));
+        }
+
+        case CMD_REGISTER_MF: {
+            uint32_t name_len = 0;
+            if (!read_exact(pipe, &name_len, sizeof(name_len))) {
+                return false;
+            }
+
+            wchar_t name_buf[256] = {};
+            if (name_len > 0 && name_len < 256) {
+                if (!read_exact(pipe, name_buf, name_len * sizeof(wchar_t))) {
+                    return false;
+                }
+                name_buf[name_len] = L'\0';
+            } else {
+                StringCchCopyW(name_buf, 256, AKVC_CAMERA_NAME);
+            }
+
+            const uint32_t response = register_mf_virtual_camera(name_buf) ? RSP_OK : RSP_UNKNOWN;
+            return write_exact(pipe, &response, sizeof(response));
+        }
+
+        case CMD_STATUS: {
+            auto* ctrl = producer_.ctrl();
+            uint8_t buf[24];
+            uint32_t magic = AKVC_MAGIC;
+            uint32_t pid = ::GetCurrentProcessId();
+            uint64_t hb = ctrl->producer_heartbeat;
+            uint32_t seq_lo = static_cast<uint32_t>(ctrl->producer_seq & 0xFFFFFFFF);
+            uint32_t seq_hi = static_cast<uint32_t>(ctrl->producer_seq >> 32);
+            memcpy(buf + 0,  &magic, 4);
+            memcpy(buf + 4,  &pid, 4);
+            memcpy(buf + 8,  &hb, 8);
+            memcpy(buf + 16, &seq_lo, 4);
+            memcpy(buf + 20, &seq_hi, 4);
+            return write_exact(pipe, buf, sizeof(buf));
+        }
+
+        default: {
+            const uint32_t response = RSP_UNKNOWN;
+            return write_exact(pipe, &response, sizeof(response));
+        }
+    }
+}
 
 void Helper::pipe_loop() {
+    SECURITY_ATTRIBUTES sa{};
+    ScopedSecurityDescriptor scoped_sd;
+    SECURITY_ATTRIBUTES* pipe_sa = nullptr;
+    if (build_pipe_security_attributes(sa, scoped_sd)) {
+        pipe_sa = &sa;
+    } else {
+        std::fprintf(stderr, "[helper] ConvertStringSecurityDescriptorToSecurityDescriptorW(pipe) failed err=%lu\n", static_cast<unsigned long>(::GetLastError()));
+    }
+
+    HANDLE pipe = ::CreateNamedPipeW(
+        pipe_name_.c_str(),
+        PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
+        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+        1,
+        4096,
+        4096,
+        0,
+        pipe_sa);
+    if (pipe == INVALID_HANDLE_VALUE) {
+        std::fprintf(stderr, "[helper] CreateNamedPipeW failed err=%lu\n", static_cast<unsigned long>(::GetLastError()));
+        stop();
+        return;
+    }
+
+    HANDLE event = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (event == nullptr) {
+        std::fprintf(stderr, "[helper] CreateEventW failed err=%lu\n", static_cast<unsigned long>(::GetLastError()));
+        ::CloseHandle(pipe);
+        stop();
+        return;
+    }
+
+    std::fprintf(stderr, "[helper] listening on %S\n", pipe_name_.c_str());
+
     while (running_) {
-        uint32_t cmd;
-        DWORD bytes_read = 0;
-        BOOL ok = ::ReadFile(::GetStdHandle(STD_INPUT_HANDLE),
-                             &cmd, sizeof(cmd), &bytes_read, nullptr);
-        if (!ok || bytes_read == 0) {
-            // stdin closed (the parent app exited) → shut down cleanly so the
-            // MF VirtualCamera is Stop()+Remove()'d and no stale device lingers.
-            std::fprintf(stderr, "[helper] stdin closed, shutting down\n");
+        OVERLAPPED ov{};
+        ov.hEvent = event;
+        ::ResetEvent(event);
+
+        BOOL ok = ::ConnectNamedPipe(pipe, &ov);
+        DWORD err = ok ? ERROR_SUCCESS : ::GetLastError();
+        if (!ok && err == ERROR_PIPE_CONNECTED) {
+            ::SetEvent(event);
+        } else if (!ok && err != ERROR_IO_PENDING) {
+            std::fprintf(stderr, "[helper] ConnectNamedPipe failed err=%lu\n", static_cast<unsigned long>(err));
             stop();
-            return;
+            break;
         }
-        if (bytes_read != sizeof(cmd)) {
+
+        bool connection_ready = false;
+        while (running_) {
+            if (!is_parent_alive()) {
+                stop();
+                break;
+            }
+
+            DWORD wait = ::WaitForSingleObject(event, kPipeWaitTimeoutMs);
+            if (wait == WAIT_OBJECT_0) {
+                connection_ready = true;
+                break;
+            }
+            if (wait != WAIT_TIMEOUT) {
+                std::fprintf(stderr, "[helper] WaitForSingleObject(pipe) failed wait=%lu\n", static_cast<unsigned long>(wait));
+                stop();
+                break;
+            }
+        }
+
+        if (!running_) {
+            ::CancelIoEx(pipe, &ov);
+            break;
+        }
+
+        if (!connection_ready) {
+            ::CancelIoEx(pipe, &ov);
             continue;
         }
 
-        uint32_t response = RSP_UNKNOWN;
-
-        switch (static_cast<PipeCommand>(cmd)) {
-            case CMD_QUIT:
-                response = RSP_OK;
-                ::WriteFile(::GetStdHandle(STD_OUTPUT_HANDLE),
-                            &response, sizeof(response), &bytes_read, nullptr);
+        DWORD transferred = 0;
+        if (!::GetOverlappedResult(pipe, &ov, &transferred, FALSE)) {
+            err = ::GetLastError();
+            if (err != ERROR_PIPE_CONNECTED) {
+                std::fprintf(stderr, "[helper] GetOverlappedResult failed err=%lu\n", static_cast<unsigned long>(err));
                 stop();
-                return;
-
-            case CMD_PING:
-                response = RSP_PONG;
-                break;
-
-            case CMD_REGISTER_MF: {
-                // Read the friendly name: uint32 name_len (in wchar_t units)
-                // followed by name_len wchar_t characters (UTF-16).
-                uint32_t name_len = 0;
-                DWORD nr = 0;
-                ::ReadFile(::GetStdHandle(STD_INPUT_HANDLE),
-                           &name_len, sizeof(name_len), &nr, nullptr);
-                wchar_t name_buf[256] = {};
-                if (name_len > 0 && name_len < 256) {
-                    ::ReadFile(::GetStdHandle(STD_INPUT_HANDLE),
-                               name_buf, name_len * sizeof(wchar_t), &nr, nullptr);
-                    name_buf[name_len] = L'\0';
-                } else {
-                    wcscpy_s(name_buf, L"AK Virtual Camera");
-                }
-                bool ok = register_mf_virtual_camera(name_buf);
-                response = ok ? RSP_OK : RSP_UNKNOWN;
                 break;
             }
-
-            case CMD_STATUS: {
-                auto* ctrl = producer_.ctrl();
-                uint8_t buf[24];
-                uint32_t magic = AKVC_MAGIC;
-                uint32_t pid = ::GetCurrentProcessId();
-                uint64_t hb = ctrl->producer_heartbeat;
-                uint32_t seq_lo = static_cast<uint32_t>(ctrl->producer_seq & 0xFFFFFFFF);
-                uint32_t seq_hi = static_cast<uint32_t>(ctrl->producer_seq >> 32);
-                memcpy(buf + 0,  &magic, 4);
-                memcpy(buf + 4,  &pid, 4);
-                memcpy(buf + 8,  &hb, 8);
-                memcpy(buf + 16, &seq_lo, 4);
-                memcpy(buf + 20, &seq_hi, 4);
-                ::WriteFile(::GetStdHandle(STD_OUTPUT_HANDLE),
-                            buf, sizeof(buf), &bytes_read, nullptr);
-                continue;  // already wrote response
-            }
-
-            default:
-                response = RSP_UNKNOWN;
-                break;
         }
 
-        ::WriteFile(::GetStdHandle(STD_OUTPUT_HANDLE),
-                    &response, sizeof(response), &bytes_read, nullptr);
+        const bool keep_serving = handle_client(pipe);
+        ::FlushFileBuffers(pipe);
+        ::DisconnectNamedPipe(pipe);
+        if (!keep_serving) {
+            break;
+        }
     }
+
+    ::CloseHandle(event);
+    ::CloseHandle(pipe);
 }
 
 }  // namespace akvc
 
-// ── Main entry point ──
-
-int main(int, char*[]) {
+int wmain(int argc, wchar_t* argv[]) {
     akvc::Helper helper;
+    std::wstring log_path;
+
+    for (int i = 1; i < argc; ++i) {
+        if (wcscmp(argv[i], L"--pipe") == 0 && i + 1 < argc) {
+            helper.set_pipe_name(argv[++i]);
+            continue;
+        }
+        if (wcscmp(argv[i], L"--parent-pid") == 0 && i + 1 < argc) {
+            helper.set_parent_pid(static_cast<DWORD>(_wcstoui64(argv[++i], nullptr, 10)));
+            continue;
+        }
+        if (wcscmp(argv[i], L"--log") == 0 && i + 1 < argc) {
+            log_path = argv[++i];
+            helper.set_log_path(log_path);
+            continue;
+        }
+        std::fprintf(stderr, "[helper] ignoring unknown argument: %S\n", argv[i]);
+    }
+
+    if (!log_path.empty()) {
+        FILE* log_fp = nullptr;
+        if (_wfreopen_s(&log_fp, log_path.c_str(), L"a", stderr) == 0 && log_fp != nullptr) {
+            setvbuf(stderr, nullptr, _IONBF, 0);
+        }
+    }
+
+    akvc::g_helper_instance = &helper;
+    ::SetConsoleCtrlHandler(akvc::console_ctrl_handler, TRUE);
+
     if (!helper.start()) {
         std::fprintf(stderr, "[helper] failed to start\n");
+        akvc::g_helper_instance = nullptr;
         return 1;
     }
 
-    // Block until stop is requested (from pipe or stdin close).
-    // We use a simple console event handler for CTRL+C.
-    ::SetConsoleCtrlHandler([](DWORD ctrl_type) -> BOOL {
-        if (ctrl_type == CTRL_C_EVENT || ctrl_type == CTRL_BREAK_EVENT) {
-            // The handler returns TRUE and the process exits via stop().
-            return FALSE;  // allow default handler
-        }
-        return FALSE;
-    }, TRUE);
-
     helper.wait();
+    akvc::g_helper_instance = nullptr;
     return 0;
 }

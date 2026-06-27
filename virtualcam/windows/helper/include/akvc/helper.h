@@ -11,7 +11,8 @@
 //
 // Lifecycle:
 //   - Started by the desktop app (or CLI) on demand.
-//   - Exits when it receives QUIT on the pipe, or stdin EOF, or CTRL+C.
+//   - Exits when it receives QUIT on the pipe, when the pipe disconnects,
+//     when the parent process exits, or on CTRL+C.
 //   - On crash the SHM is released by the OS (named objects persist until
 //     last handle closes); consumers see a stale frame and eventually time
 //     out.
@@ -52,6 +53,10 @@ public:
     // Returns false if SHM creation fails.
     bool start();
 
+    void set_pipe_name(std::wstring pipe_name) { pipe_name_ = std::move(pipe_name); }
+    void set_parent_pid(DWORD parent_pid) { parent_pid_ = parent_pid; }
+    void set_log_path(std::wstring log_path) { log_path_ = std::move(log_path); }
+
     // Register the MF virtual camera with Windows. |name| is the friendly
     // name shown to applications (Chrome/OBS/etc.). Also writes the name to
     // HKLM\SOFTWARE\AKVC\FriendlyName so the DShow filter can read it.
@@ -77,6 +82,8 @@ private:
     // Publish a placeholder frame (black NV12 1280x720).
     void publish_placeholder();
 
+    bool is_parent_alive() const;
+
     // --- state ---
     std::atomic<bool> running_{false};
 
@@ -86,14 +93,20 @@ private:
     std::thread pipe_thread_;
 
     // The MF VirtualCamera reference. Held alive for the helper's lifetime so
-    // the PnP device stays present; released (Stop + Remove) on shutdown so
-    // no stale device node lingers.
+    // the PnP device stays present; stopped on shutdown so no stale device node
+    // remains active.
     IMFVirtualCamera* mf_camera_ = nullptr;
 
     // When the UI last checked in (from heartbeat monitoring perspective).
     // If the UI process crashes, heartbeat_ will stop updating, and after
     // AKVC_HEARTBEAT_TIMEOUT we start publishing placeholders.
     bool ui_connected_ = false;
+
+    std::wstring pipe_name_;
+    DWORD parent_pid_ = 0;
+    HANDLE parent_process_ = nullptr;
+    std::wstring mf_camera_name_;
+    std::wstring log_path_;
 };
 
 }  // namespace akvc
