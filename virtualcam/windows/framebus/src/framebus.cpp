@@ -73,6 +73,56 @@ FrameBusBase::~FrameBusBase() {
 
 // ---------------- Producer ----------------
 
+akvc_status_t FrameBusProducer::open_existing() {
+    if (is_open()) return AKVC_OK;
+
+    last_error_ = {};
+    region_size_ = AKVC_DEFAULT_REGION_SIZE;
+
+    mapping_ = ::OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, FALSE, kFrameBusMappingName);
+    if (!mapping_) {
+        set_last_error(::GetLastError(), "OpenFileMappingW", kFrameBusMappingName);
+        return translate_win32(::GetLastError());
+    }
+
+    base_ = reinterpret_cast<uint8_t*>(
+        ::MapViewOfFile(mapping_, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, region_size_));
+    if (!base_) {
+        set_last_error(::GetLastError(), "MapViewOfFile", kFrameBusMappingName);
+        close();
+        return translate_win32(::GetLastError());
+    }
+
+    auto* ctrl = control();
+    if (ctrl->magic != AKVC_MAGIC ||
+        ctrl->schema_version != AKVC_SCHEMA_VERSION ||
+        ctrl->slot_count != AKVC_RING_SLOTS ||
+        ctrl->slot_size != AKVC_DEFAULT_SLOT_SIZE) {
+        close();
+        return E_AKVC_FRAMEBUS_SCHEMA_MISMATCH;
+    }
+
+    region_size_ = sizeof(akvc_ring_control_t)
+                 + ctrl->slot_count * ctrl->slot_size;
+
+    event_ = ::OpenEventW(EVENT_MODIFY_STATE | SYNCHRONIZE, FALSE, kFrameBusEventName);
+    if (!event_) {
+        set_last_error(::GetLastError(), "OpenEventW", kFrameBusEventName);
+        close();
+        return translate_win32(::GetLastError());
+    }
+
+    mutex_ = ::OpenMutexW(SYNCHRONIZE, FALSE, kFrameBusMutexName);
+    if (!mutex_) {
+        set_last_error(::GetLastError(), "OpenMutexW", kFrameBusMutexName);
+        close();
+        return translate_win32(::GetLastError());
+    }
+
+    ctrl->writer_pid = ::GetCurrentProcessId();
+    return AKVC_OK;
+}
+
 akvc_status_t FrameBusProducer::create() {
     if (is_open()) return AKVC_OK;
 

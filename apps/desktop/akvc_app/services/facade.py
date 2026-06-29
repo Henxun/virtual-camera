@@ -115,6 +115,9 @@ class ServiceFacade:
 
         if self._is_windows:
             assert self._helper is not None
+            helper_was_alive = self._helper.ping()
+            if not helper_was_alive:
+                self._device_registered = False
             if not self._helper.start():
                 detail = self._helper.last_error_message or "failed to start akvc helper"
                 raise RuntimeError(detail)

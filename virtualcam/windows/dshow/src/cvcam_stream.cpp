@@ -256,11 +256,6 @@ HRESULT CAKVCStream::FillFromFrameBus(IMediaSample* pSample,
     }
     pSample->SetActualDataLength(static_cast<long>(dst - pData));
 
-    // Honor the producer's PTS if it looks reasonable; otherwise keep our clock.
-    if (hdr->pts_100ns != 0) {
-        rtStart = static_cast<REFERENCE_TIME>(hdr->pts_100ns);
-        rtEnd   = rtStart + m_rtFrameLength;
-    }
     return S_OK;
 }
 

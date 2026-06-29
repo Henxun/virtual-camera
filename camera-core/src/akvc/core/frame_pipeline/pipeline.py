@@ -6,19 +6,14 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 
+from akvc._core_native import process_pipeline
+
 from ..frame import Frame
 
 log = logging.getLogger(__name__)
 
 
 class PipelineStage(ABC):
-    """A single transformation step.
-
-    Stages must be deterministic on a per-frame basis and must not block on
-    external resources (file I/O, network). Heavy work belongs in dedicated
-    worker stages with their own lifecycle.
-    """
-
     @property
     @abstractmethod
     def name(self) -> str: ...
@@ -47,11 +42,4 @@ class FramePipeline:
         return list(self._stages)
 
     def process(self, frame: Frame) -> Frame:
-        cur = frame
-        for st in self._stages:
-            try:
-                cur = st.process(cur)
-            except Exception:
-                log.exception("pipeline stage %s failed; passing frame through", st.name)
-                # Continue with previous frame to satisfy invariant I3.
-        return cur
+        return process_pipeline(self._stages, frame, log)

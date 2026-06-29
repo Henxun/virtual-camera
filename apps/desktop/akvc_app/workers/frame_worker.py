@@ -33,10 +33,11 @@ from akvc.core.frame_pipeline import (
     ResizeStage,
 )
 from akvc.core.frame_provider import (
+    DEFAULT_PROVIDER_FPS,
+    DEFAULT_PROVIDER_HEIGHT,
+    DEFAULT_PROVIDER_WIDTH,
     FrameProvider,
-    Pattern,
-    TestPatternProvider,
-    UsbCameraProvider,
+    create_provider_from_source_id,
 )
 from akvc.core.frame_sink import create_sink, FrameSink
 from akvc.core.metrics import Metrics
@@ -51,14 +52,11 @@ class WorkerCommand:
 
 
 def _build_provider(source_id: str) -> FrameProvider:
-    if source_id.startswith("usb:"):
-        idx = int(source_id.split(":", 1)[1])
-        return UsbCameraProvider(device_index=idx, width=1280, height=720, fps=30)
-    # test:colorbar / test:gradient / test:checkerboard / etc.
-    pattern_id = source_id.split(":", 1)[1] if ":" in source_id else "colorbar"
-    return TestPatternProvider(
-        width=1280, height=720, fps=30,
-        pattern=Pattern.from_id(pattern_id),
+    return create_provider_from_source_id(
+        source_id,
+        width=DEFAULT_PROVIDER_WIDTH,
+        height=DEFAULT_PROVIDER_HEIGHT,
+        fps=DEFAULT_PROVIDER_FPS,
     )
 
 

@@ -4,13 +4,19 @@
 from __future__ import annotations
 
 import threading
-import time
 
 import cv2
-import numpy as np
 
-from ..frame import Frame, FLAG_ERROR
+from akvc._core_native import (
+    NativeUsbCaptureOpener,
+    NativeUsbDeviceProber,
+    NativeUsbFrameReader,
+)
+
 from .base import FormatSpec, FrameProvider, ProviderInfo
+
+
+_DEVICE_PROBER = NativeUsbDeviceProber()
 
 
 class UsbCameraProvider(FrameProvider):
@@ -30,8 +36,9 @@ class UsbCameraProvider(FrameProvider):
         self.fps = fps
         self.backend = backend
         self._cap: cv2.VideoCapture | None = None
-        self._seq = 0
         self._stop_requested = threading.Event()
+        self._opener = NativeUsbCaptureOpener(width, height, fps)
+        self._reader = NativeUsbFrameReader(width, height)
 
     @staticmethod
     def list_devices(max_probe: int = 8) -> list[ProviderInfo]:
@@ -39,70 +46,26 @@ class UsbCameraProvider(FrameProvider):
 
         Avoid this on production paths — it spins the camera HW briefly.
         """
-        out: list[ProviderInfo] = []
-        for i in range(max_probe):
-            cap = cv2.VideoCapture(i, cv2.CAP_MSMF)
-            ok = cap.isOpened()
-            if not ok:
-                cap.release()
-                cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
-                ok = cap.isOpened()
-            if ok:
-                out.append(
-                    ProviderInfo(id=f"usb:{i}", name=f"USB Camera {i}", formats=())
-                )
-            cap.release()
-        return out
+        return [
+            ProviderInfo(id=f"usb:{i}", name=f"USB Camera {i}", formats=())
+            for i in _DEVICE_PROBER.list_indices(max_probe, cv2, cv2.VideoCapture)
+        ]
 
     def open(self) -> None:
         self._stop_requested.clear()
-        backends = {
-            "msmf": [cv2.CAP_MSMF, cv2.CAP_DSHOW, cv2.CAP_ANY],
-            "dshow": [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY],
-            "any": [cv2.CAP_ANY, cv2.CAP_MSMF, cv2.CAP_DSHOW],
-        }.get(self.backend, [cv2.CAP_ANY])
-
-        last_err: Exception | None = None
-        for be in backends:
-            try:
-                cap = cv2.VideoCapture(self.device_index, be)
-                if cap.isOpened():
-                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-                    cap.set(cv2.CAP_PROP_FPS, self.fps)
-                    self._set_capture_option(cap, cv2.CAP_PROP_BUFFERSIZE, 1)
-                    self._set_capture_option(cap, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 250)
-                    self._cap = cap
-                    return
-                cap.release()
-            except Exception as exc:  # pragma: no cover
-                last_err = exc
-        raise RuntimeError(
-            f"Cannot open USB camera {self.device_index}: {last_err}"
-        )
+        self._reader.clear_stop()
+        self._cap = self._opener.open(self.device_index, self.backend, cv2, cv2.VideoCapture)
 
     def request_stop(self) -> None:
         self._stop_requested.set()
+        self._reader.request_stop()
 
-    def read(self) -> Frame:
-        cap = self._cap
-        if cap is None:
-            return self._error_frame("not opened")
-        if self._stop_requested.is_set():
-            return self._error_frame("stop requested")
-        ok, bgr = cap.read()
-        if not ok or bgr is None:
-            if self._stop_requested.is_set():
-                return self._error_frame("stop requested")
-            time.sleep(0.005)
-            ok, bgr = cap.read()
-            if not ok or bgr is None:
-                return self._error_frame("read failed")
-        self._seq += 1
-        return Frame.from_bgr(bgr, seq=self._seq)
+    def read(self):
+        return self._reader.read(self._cap)
 
     def close(self) -> None:
         self._stop_requested.set()
+        self._reader.request_stop()
         if self._cap is not None:
             self._cap.release()
             self._cap = None
@@ -116,15 +79,3 @@ class UsbCameraProvider(FrameProvider):
             formats=(FormatSpec(FourCC.RGB24, self.width, self.height, self.fps),),
         )
 
-    def _error_frame(self, reason: str) -> Frame:
-        bgr = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-        frame = Frame.from_bgr(bgr, seq=self._seq, flags=FLAG_ERROR)
-        frame.meta = {"reason": reason}
-        return frame
-
-    @staticmethod
-    def _set_capture_option(cap: cv2.VideoCapture, prop: int, value: int) -> None:
-        try:
-            cap.set(prop, value)
-        except Exception:
-            pass

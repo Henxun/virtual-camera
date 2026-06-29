@@ -6,6 +6,7 @@
 #include "akvc/helper.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -13,6 +14,7 @@
 #include <cwchar>
 #include <fcntl.h>
 #include <io.h>
+#include <limits>
 #include <thread>
 #include <vector>
 
@@ -120,6 +122,23 @@ bool build_pipe_security_attributes(SECURITY_ATTRIBUTES& sa, ScopedSecurityDescr
     return true;
 }
 
+bool parse_parent_pid_arg(const wchar_t* value, DWORD& parent_pid) {
+    if (value == nullptr || *value == L'\0') {
+        return false;
+    }
+
+    wchar_t* end = nullptr;
+    errno = 0;
+    const unsigned long long parsed = std::wcstoull(value, &end, 10);
+    if (end == value || end == nullptr || *end != L'\0' || errno == ERANGE ||
+        parsed == 0 || parsed > std::numeric_limits<DWORD>::max()) {
+        return false;
+    }
+
+    parent_pid = static_cast<DWORD>(parsed);
+    return true;
+}
+
 }  // namespace
 
 Helper::~Helper() {
@@ -138,10 +157,10 @@ bool Helper::start() {
             const DWORD win32 = ::GetLastError();
             std::fprintf(
                 stderr,
-                "[helper] startup_error status=%d op=OpenProcess win32=%lu object=parent-pid hint=check parent pid\n",
-                -1,
+                "[helper] parent_watch_disabled pid=%lu op=OpenProcess win32=%lu\n",
+                static_cast<unsigned long>(parent_pid_),
                 static_cast<unsigned long>(win32));
-            return false;
+            parent_pid_ = 0;
         }
     }
 
@@ -594,8 +613,18 @@ int wmain(int argc, wchar_t* argv[]) {
             helper.set_pipe_name(argv[++i]);
             continue;
         }
-        if (wcscmp(argv[i], L"--parent-pid") == 0 && i + 1 < argc) {
-            helper.set_parent_pid(static_cast<DWORD>(_wcstoui64(argv[++i], nullptr, 10)));
+        if (wcscmp(argv[i], L"--parent-pid") == 0) {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "[helper] ignoring invalid --parent-pid argument: missing value\n");
+                continue;
+            }
+            DWORD parent_pid = 0;
+            const wchar_t* value = argv[++i];
+            if (!akvc::parse_parent_pid_arg(value, parent_pid)) {
+                std::fprintf(stderr, "[helper] ignoring invalid --parent-pid value: %S\n", value);
+                continue;
+            }
+            helper.set_parent_pid(parent_pid);
             continue;
         }
         if (wcscmp(argv[i], L"--log") == 0 && i + 1 < argc) {

@@ -101,6 +101,10 @@ public:
     // schema matches, takes it over (writer_pid is updated).
     akvc_status_t create();
 
+    // Attaches to an existing shared region created by another producer-like
+    // owner (for example the elevated helper). Uses open-only semantics.
+    akvc_status_t open_existing();
+
     // Publishes a single frame.
     // header.fourcc / width / height / stride / plane_size must be set.
     // plane data is provided as up to 2 contiguous buffers (NV12 has 2 planes,

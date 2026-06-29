@@ -3,9 +3,15 @@ include LICENSE
 include NOTICE
 include pyproject.toml
 include setup.py
+include build_support.py
+include camera-core/build_support.py
 
 recursive-include camera-core/src *.py
 recursive-include camera-core/src *.typed
+recursive-include camera-core/native *.cpp
+recursive-include virtualcam/windows/framebus/src *
+recursive-include virtualcam/windows/framebus/include *
+recursive-include virtualcam/shared *
 recursive-include apps/cli *.py
 
 prune .claude

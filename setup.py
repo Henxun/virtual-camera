@@ -10,6 +10,8 @@ from pathlib import Path
 from setuptools import setup
 from setuptools.command.build_py import build_py as _build_py
 
+from build_support import AkvcBuildExt, akvc_native_extensions
+
 try:
     from setuptools.command.editable_wheel import editable_wheel as _editable_wheel
 except ImportError:  # pragma: no cover
@@ -61,10 +63,17 @@ if _editable_wheel is not None:
 
     CMDCLASS = {
         "build_py": build_py,
+        "build_ext": AkvcBuildExt,
         "editable_wheel": editable_wheel,
     }
 else:
-    CMDCLASS = {"build_py": build_py}
+    CMDCLASS = {
+        "build_py": build_py,
+        "build_ext": AkvcBuildExt,
+    }
 
 
-setup(cmdclass=CMDCLASS)
+setup(
+    cmdclass=CMDCLASS,
+    ext_modules=akvc_native_extensions(),
+)

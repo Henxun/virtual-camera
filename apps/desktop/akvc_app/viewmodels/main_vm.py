@@ -23,6 +23,7 @@ class MainViewModel(QObject):
     def __init__(self, facade: ServiceFacade, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._facade = facade
+        self._running: bool | None = None
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(500)
         self._poll_timer.timeout.connect(self._poll_status)
@@ -50,19 +51,26 @@ class MainViewModel(QObject):
     def start(self) -> None:
         try:
             self._facade.start()
-            self.running_changed.emit(True)
+            self._set_running(True)
         except Exception as exc:
+            self._set_running(False)
             self.error.emit(str(exc))
 
     @Slot()
     def stop(self) -> None:
         try:
             self._facade.stop()
-            self.running_changed.emit(False)
+            self._set_running(False)
         except Exception as exc:
             self.error.emit(str(exc))
 
     # ---------- polling ----------
+
+    def _set_running(self, running: bool) -> None:
+        if self._running == running:
+            return
+        self._running = running
+        self.running_changed.emit(running)
 
     def _poll_status(self) -> None:
         st = self._facade.poll_status()
@@ -81,4 +89,4 @@ class MainViewModel(QObject):
                 QImage(st.last_preview, 320, 180, QImage.Format.Format_RGB888)
             )
             self.preview_changed.emit(pix)
-        self.running_changed.emit(st.running)
+        self._set_running(st.running)

@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Resize stage — uses OpenCV INTER_AREA for downscale, INTER_LINEAR for upscale."""
+"""Resize stage — native-backed RGB24 resize."""
 
 from __future__ import annotations
 
-import cv2
-import numpy as np
+from akvc._core_native import resize_rgb24_frame
 
-from ..frame import Frame, FourCC
+from ..frame import Frame
 from .pipeline import PipelineStage
 
 
@@ -20,17 +19,4 @@ class ResizeStage(PipelineStage):
         return "resize"
 
     def process(self, frame: Frame) -> Frame:
-        if frame.fourcc != FourCC.RGB24:
-            # Phase 2: only resize BGR; NV12 resize is done before NV12 conversion.
-            return frame
-        if frame.width == self.target_w and frame.height == self.target_h:
-            return frame
-
-        bgr = frame.data.reshape(frame.height, frame.width, 3)
-        interp = (
-            cv2.INTER_AREA
-            if (self.target_w * self.target_h) < (frame.width * frame.height)
-            else cv2.INTER_LINEAR
-        )
-        out = cv2.resize(bgr, (self.target_w, self.target_h), interpolation=interp)
-        return Frame.from_bgr(out, pts_100ns=frame.pts_100ns, seq=frame.seq, flags=frame.flags)
+        return resize_rgb24_frame(frame, self.target_w, self.target_h)

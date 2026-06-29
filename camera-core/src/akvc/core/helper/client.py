@@ -3,31 +3,20 @@
 
 from __future__ import annotations
 
-import ctypes
-import ctypes.wintypes
 import os
 import re
-import struct
 import subprocess
 import tempfile
 import time
 from pathlib import Path
 from typing import Optional
 
+from akvc._core_native import NativeWindowsHelperClient
+
 from ...runtime import find_helper_exe
 
 
-CMD_QUIT = 0x00000001
-CMD_PING = 0x00000002
-CMD_STATUS = 0x00000003
-CMD_REGISTER_MF = 0x00000004
-
-RSP_OK = 0x00000000
-RSP_PONG = 0x00000001
-RSP_UNKNOWN = 0xFFFFFFFF
-
 PIPE_NAME = r"\\.\pipe\akvc-helper-ctrl"
-WAIT_TIMEOUT_MS = 250
 START_TIMEOUT_S = 8.0
 
 _STARTUP_ERROR_RE = re.compile(
@@ -42,11 +31,10 @@ class HelperService:
         self._proc: Optional[subprocess.Popen] = None
         self._helper_exe = Path(helper_exe) if helper_exe is not None else None
         self._startup_log_path: Optional[Path] = None
-        self._last_pipe_error: Optional[str] = None
         self.last_error_message: Optional[str] = None
+        self._native = NativeWindowsHelperClient()
 
     def start(self) -> bool:
-        self._last_pipe_error = None
         if self.ping():
             self.last_error_message = None
             return True
@@ -59,7 +47,7 @@ class HelperService:
             )
             return False
 
-        if self._launch_elevated(exe):
+        if self._launch(exe):
             deadline = time.monotonic() + START_TIMEOUT_S
             while time.monotonic() < deadline:
                 if self.ping():
@@ -75,7 +63,7 @@ class HelperService:
         return False
 
     def stop(self, timeout: float = 3.0) -> None:
-        self._transact(CMD_QUIT)
+        self._native.quit()
         if self._proc is not None:
             try:
                 self._proc.wait(timeout=timeout)
@@ -91,37 +79,20 @@ class HelperService:
         return self.ping()
 
     def ping(self) -> bool:
-        data = self._transact(CMD_PING)
-        if data is None or len(data) < 4:
-            return False
-        rsp = struct.unpack("<I", data[:4])[0]
-        return rsp == RSP_PONG
+        return bool(self._native.ping())
 
     def status(self) -> Optional[dict]:
-        data = self._transact(CMD_STATUS)
-        if data is None or len(data) < 24:
+        data = self._native.status()
+        if data is None:
             return None
-        magic, pid, heartbeat, seq_lo, seq_hi = struct.unpack("<I I Q I I", data[:24])
-        return {
-            "magic": magic,
-            "pid": pid,
-            "heartbeat_100ns": heartbeat,
-            "producer_seq": (seq_hi << 32) | seq_lo,
-        }
+        return dict(data)
 
     def register_mf(self, name: str = "AK Virtual Camera") -> bool:
-        name_w = name[:255]
-        name_bytes = name_w.encode("utf-16-le")
-        payload = struct.pack("<I", len(name_bytes) // 2) + name_bytes
-        data = self._transact(CMD_REGISTER_MF, payload=payload)
-        if data is None or len(data) < 4:
-            return False
-        rsp = struct.unpack("<I", data[:4])[0]
-        return rsp == RSP_OK
+        return bool(self._native.register_mf(name[:255]))
 
-    def _launch_elevated(self, exe: Path) -> bool:
+    def _launch(self, exe: Path) -> bool:
         self._startup_log_path = Path(tempfile.gettempdir()) / "akvc-helper-startup.log"
-        if self._is_process_elevated():
+        if self._native.is_process_elevated():
             try:
                 self._proc = subprocess.Popen(
                     [
@@ -143,150 +114,18 @@ class HelperService:
                 self.last_error_message = f"Failed to launch AKVC helper at {exe}: {exc}"
                 return False
 
-        args = (
-            f'--pipe "{PIPE_NAME}" '
-            f'--parent-pid {os.getpid()} '
-            f'--log "{self._startup_log_path}"'
-        )
-        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
-        shell32.ShellExecuteW.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_wchar_p,
-            ctypes.c_wchar_p,
-            ctypes.c_wchar_p,
-            ctypes.c_wchar_p,
-            ctypes.c_int,
-        ]
-        shell32.ShellExecuteW.restype = ctypes.wintypes.HINSTANCE
-
-        rc = shell32.ShellExecuteW(None, "runas", str(exe), args, str(exe.parent), 0)
-        if int(rc) <= 32:
+        launched = self._native.launch(str(exe), os.getpid(), str(self._startup_log_path))
+        if not launched:
             self._proc = None
+            detail = self._native.last_launch_error
             self.last_error_message = (
-                f"Failed to launch AKVC helper at {exe} with elevation (ShellExecuteW rc={int(rc)})."
+                f"Failed to launch AKVC helper at {exe} with elevation ({detail})."
+                if detail
+                else f"Failed to launch AKVC helper at {exe} with elevation."
             )
             return False
         self._proc = None
         return True
-
-    def _transact(self, cmd: int, payload: bytes = b"") -> Optional[bytes]:
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.WaitNamedPipeW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32]
-        kernel32.WaitNamedPipeW.restype = ctypes.c_int
-        kernel32.CreateFileW.argtypes = [
-            ctypes.c_wchar_p,
-            ctypes.c_uint32,
-            ctypes.c_uint32,
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            ctypes.c_uint32,
-            ctypes.c_void_p,
-        ]
-        kernel32.CreateFileW.restype = ctypes.c_void_p
-        kernel32.ReadFile.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            ctypes.POINTER(ctypes.c_uint32),
-            ctypes.c_void_p,
-        ]
-        kernel32.ReadFile.restype = ctypes.c_int
-        kernel32.WriteFile.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            ctypes.POINTER(ctypes.c_uint32),
-            ctypes.c_void_p,
-        ]
-        kernel32.WriteFile.restype = ctypes.c_int
-        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-        kernel32.CloseHandle.restype = ctypes.c_int
-
-        GENERIC_READ = 0x80000000
-        GENERIC_WRITE = 0x40000000
-        OPEN_EXISTING = 3
-        INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
-
-        if not kernel32.WaitNamedPipeW(PIPE_NAME, WAIT_TIMEOUT_MS):
-            self._last_pipe_error = f"WaitNamedPipeW err={ctypes.get_last_error()}"
-            return None
-
-        handle = kernel32.CreateFileW(
-            PIPE_NAME,
-            GENERIC_READ | GENERIC_WRITE,
-            0,
-            None,
-            OPEN_EXISTING,
-            0,
-            None,
-        )
-        if handle == INVALID_HANDLE_VALUE:
-            self._last_pipe_error = f"CreateFileW err={ctypes.get_last_error()}"
-            return None
-
-        try:
-            request = struct.pack("<I", cmd) + payload
-            written = ctypes.c_uint32(0)
-            buf = ctypes.create_string_buffer(request)
-            if not kernel32.WriteFile(handle, buf, len(request), ctypes.byref(written), None):
-                return None
-
-            read_len = 24 if cmd == CMD_STATUS else 4
-            response = ctypes.create_string_buffer(read_len)
-            read = ctypes.c_uint32(0)
-            if not kernel32.ReadFile(handle, response, read_len, ctypes.byref(read), None):
-                return None
-            if read.value != read_len:
-                return None
-            return response.raw[: read.value]
-        finally:
-            kernel32.CloseHandle(handle)
-
-    def _is_process_elevated(self) -> bool:
-        advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
-        advapi32.OpenProcessToken.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            ctypes.POINTER(ctypes.c_void_p),
-        ]
-        advapi32.OpenProcessToken.restype = ctypes.c_int
-        advapi32.GetTokenInformation.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            ctypes.POINTER(ctypes.c_uint32),
-        ]
-        advapi32.GetTokenInformation.restype = ctypes.c_int
-        kernel32.GetCurrentProcess.argtypes = []
-        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
-        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-        kernel32.CloseHandle.restype = ctypes.c_int
-
-        class TOKEN_ELEVATION(ctypes.Structure):
-            _fields_ = [("TokenIsElevated", ctypes.c_uint32)]
-
-        TOKEN_QUERY = 0x0008
-        TokenElevation = 20
-        token = ctypes.c_void_p()
-        if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(token)):
-            return False
-        try:
-            elevation = TOKEN_ELEVATION()
-            size = ctypes.c_uint32(0)
-            if not advapi32.GetTokenInformation(
-                token,
-                TokenElevation,
-                ctypes.byref(elevation),
-                ctypes.sizeof(elevation),
-                ctypes.byref(size),
-            ):
-                return False
-            return bool(elevation.TokenIsElevated)
-        finally:
-            kernel32.CloseHandle(token)
 
     def _describe_start_failure(self, exe: Path) -> str:
         if self._proc is None:
@@ -295,9 +134,11 @@ class HelperService:
                 if self._startup_log_path is not None
                 else ""
             )
+            pipe_hint = self._native.last_pipe_error
+            tail = f" {pipe_hint}" if pipe_hint else ""
             return (
                 f"AKVC helper at {exe} did not start or the control pipe {PIPE_NAME} is not ready. "
-                f"The helper may still require elevated privileges on Windows.{log_hint}"
+                f"The helper may still require elevated privileges on Windows.{log_hint}{tail}"
             )
 
         stderr = ""
@@ -325,7 +166,9 @@ class HelperService:
             return f"AKVC helper failed during startup: {' | '.join(stderr_lines)}"
         if self._proc.poll() is not None:
             return f"AKVC helper exited during startup with code {self._proc.returncode}."
+        pipe_hint = self._native.last_pipe_error
+        tail = f" {pipe_hint}" if pipe_hint else ""
         return (
             f"AKVC helper at {exe} did not respond on named pipe {PIPE_NAME} during startup. "
-            f"The helper may still require elevated privileges or manual approval. {self._last_pipe_error or ''}"
+            f"The helper may still require elevated privileges or manual approval.{tail}"
         )

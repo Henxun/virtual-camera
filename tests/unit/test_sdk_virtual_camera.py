@@ -136,18 +136,23 @@ def test_helper_start_failure_raises_actionable_message(monkeypatch) -> None:
         raise AssertionError("start should fail when helper does not start")
 
 
-def test_close_stops_helper_and_is_idempotent(monkeypatch) -> None:
+def test_close_resets_mf_registration_for_next_helper_lifetime(monkeypatch) -> None:
     helper = FakeHelper()
-    sink = FakeSink()
+    sink1 = FakeSink()
+    sink2 = FakeSink()
+    sinks = iter([sink1, sink2])
 
     monkeypatch.setattr("akvc.sdk.virtual_camera.HelperService", lambda helper_exe=None: helper)
-    monkeypatch.setattr("akvc.sdk.virtual_camera.create_sink", lambda: sink)
+    monkeypatch.setattr("akvc.sdk.virtual_camera.create_sink", lambda: next(sinks))
 
     vc = VirtualCamera()
-    vc.start()
+    vc.start(name="Demo Camera")
     vc.close()
-    vc.close()
+    vc.start(name="Demo Camera")
 
-    assert sink.close_calls == 1
-    assert helper.stop_calls == 2
-    assert vc.started is False
+    assert helper.register_calls == ["Demo Camera", "Demo Camera"]
+    assert sink1.open_calls == 1
+    assert sink1.close_calls == 1
+    assert sink2.open_calls == 1
+
+

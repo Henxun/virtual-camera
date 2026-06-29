@@ -86,6 +86,7 @@ class MainWindow(QMainWindow):
 
         # Wire VM signals
         self.vm.sources_changed.connect(self._on_sources)
+        self.vm.selected_source_changed.connect(self._on_selected_source)
         self.vm.running_changed.connect(self._on_running)
         self.vm.metrics_changed.connect(self._on_metrics)
         self.vm.preview_changed.connect(self._on_preview)
@@ -109,6 +110,15 @@ class MainWindow(QMainWindow):
         sid = self._source_combo.itemData(index)
         if isinstance(sid, str):
             self.vm.select_source(sid)
+
+    @Slot(str)
+    def _on_selected_source(self, source_id: str) -> None:
+        index = self._source_combo.findData(source_id)
+        if index < 0 or index == self._source_combo.currentIndex():
+            return
+        self._source_combo.blockSignals(True)
+        self._source_combo.setCurrentIndex(index)
+        self._source_combo.blockSignals(False)
 
     @Slot(bool)
     def _on_running(self, running: bool) -> None:

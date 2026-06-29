@@ -90,6 +90,7 @@ class VirtualCamera:
     def close(self) -> None:
         self.stop()
         self._helper.stop()
+        self._mf_registered = False
 
     def shutdown(self) -> None:
         self.close()
