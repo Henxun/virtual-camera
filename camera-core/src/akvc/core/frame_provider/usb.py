@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 
 import cv2
@@ -30,6 +31,7 @@ class UsbCameraProvider(FrameProvider):
         self.backend = backend
         self._cap: cv2.VideoCapture | None = None
         self._seq = 0
+        self._stop_requested = threading.Event()
 
     @staticmethod
     def list_devices(max_probe: int = 8) -> list[ProviderInfo]:
@@ -53,6 +55,7 @@ class UsbCameraProvider(FrameProvider):
         return out
 
     def open(self) -> None:
+        self._stop_requested.clear()
         backends = {
             "msmf": [cv2.CAP_MSMF, cv2.CAP_DSHOW, cv2.CAP_ANY],
             "dshow": [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY],
@@ -67,6 +70,8 @@ class UsbCameraProvider(FrameProvider):
                     cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
                     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
                     cap.set(cv2.CAP_PROP_FPS, self.fps)
+                    self._set_capture_option(cap, cv2.CAP_PROP_BUFFERSIZE, 1)
+                    self._set_capture_option(cap, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 250)
                     self._cap = cap
                     return
                 cap.release()
@@ -76,13 +81,19 @@ class UsbCameraProvider(FrameProvider):
             f"Cannot open USB camera {self.device_index}: {last_err}"
         )
 
+    def request_stop(self) -> None:
+        self._stop_requested.set()
+
     def read(self) -> Frame:
         cap = self._cap
         if cap is None:
             return self._error_frame("not opened")
+        if self._stop_requested.is_set():
+            return self._error_frame("stop requested")
         ok, bgr = cap.read()
         if not ok or bgr is None:
-            # Soft retry once before giving back an error frame.
+            if self._stop_requested.is_set():
+                return self._error_frame("stop requested")
             time.sleep(0.005)
             ok, bgr = cap.read()
             if not ok or bgr is None:
@@ -91,6 +102,7 @@ class UsbCameraProvider(FrameProvider):
         return Frame.from_bgr(bgr, seq=self._seq)
 
     def close(self) -> None:
+        self._stop_requested.set()
         if self._cap is not None:
             self._cap.release()
             self._cap = None
@@ -106,7 +118,13 @@ class UsbCameraProvider(FrameProvider):
 
     def _error_frame(self, reason: str) -> Frame:
         bgr = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-        return Frame.from_bgr(bgr, seq=self._seq, flags=FLAG_ERROR).__class__(
-            **{**Frame.from_bgr(bgr, seq=self._seq, flags=FLAG_ERROR).__dict__,
-               "meta": {"reason": reason}}
-        )
+        frame = Frame.from_bgr(bgr, seq=self._seq, flags=FLAG_ERROR)
+        frame.meta = {"reason": reason}
+        return frame
+
+    @staticmethod
+    def _set_capture_option(cap: cv2.VideoCapture, prop: int, value: int) -> None:
+        try:
+            cap.set(prop, value)
+        except Exception:
+            pass

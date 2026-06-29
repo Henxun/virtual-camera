@@ -16,6 +16,7 @@ import logging
 import multiprocessing as mp
 import queue
 import sys
+import threading
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -61,6 +62,29 @@ def _build_provider(source_id: str) -> FrameProvider:
     )
 
 
+def _start_command_watcher(
+    cmd_q: "mp.Queue[WorkerCommand]",
+    stop_requested: threading.Event,
+    provider: FrameProvider,
+) -> threading.Thread:
+    def watch_commands() -> None:
+        while not stop_requested.is_set():
+            cmd = cmd_q.get()
+            if cmd.kind != "stop":
+                continue
+            log.info("akvc.worker.stop_requested")
+            stop_requested.set()
+            try:
+                provider.request_stop()
+            except Exception:
+                log.exception("akvc.worker.request_stop_failed")
+            break
+
+    watcher = threading.Thread(target=watch_commands, name="akvc-worker-cmd", daemon=True)
+    watcher.start()
+    return watcher
+
+
 def frame_worker_main(
     source_id: str,
     cmd_q: "mp.Queue[WorkerCommand]",
@@ -70,14 +94,25 @@ def frame_worker_main(
     log_dir = Path.home() / "AppData" / "Local" / "AKVC" / "logs"
     akvc_log.configure(level="INFO", log_dir=log_dir, component="akvc.worker")
 
+    for q in (cmd_q, stat_q, preview_q):
+        if q is None:
+            continue
+        try:
+            q.cancel_join_thread()
+        except Exception:
+            pass
+
     provider: Optional[FrameProvider] = None
     sink: Optional[FrameSink] = None
     metrics = Metrics()
+    stop_requested = threading.Event()
+    command_watcher: threading.Thread | None = None
 
     try:
         provider = _build_provider(source_id)
         provider.open()
         log.info("akvc.worker.provider_open source=%s", source_id)
+        command_watcher = _start_command_watcher(cmd_q, stop_requested, provider)
 
         if sys.platform not in ("win32", "darwin"):
             raise RuntimeError(
@@ -98,17 +133,13 @@ def frame_worker_main(
         last_metrics_t = time.perf_counter()
         last_preview_t = 0.0
         while True:
-            # Drain commands.
-            try:
-                cmd = cmd_q.get_nowait()
-                if cmd.kind == "stop":
-                    log.info("akvc.worker.stop_requested")
-                    break
-            except queue.Empty:
-                pass
+            if stop_requested.is_set():
+                break
 
             t0 = time.perf_counter()
             frame = provider.read()
+            if stop_requested.is_set():
+                break
 
             # Send preview thumbnail (~5 fps) from raw BGR before NV12 conversion.
             if preview_q is not None and time.perf_counter() - last_preview_t > 0.2:
@@ -125,6 +156,8 @@ def frame_worker_main(
                     pass
 
             frame = pipeline.process(frame)
+            if stop_requested.is_set():
+                break
 
             try:
                 sink.publish(frame)
@@ -135,7 +168,6 @@ def frame_worker_main(
                 metrics.frames_dropped.inc()
                 log.exception("akvc.worker.publish_failed")
 
-            # Push metrics roughly twice per second.
             if time.perf_counter() - last_metrics_t > 0.5:
                 snap = metrics.snapshot()
                 try:
@@ -156,6 +188,12 @@ def frame_worker_main(
             pass
         return 1
     finally:
+        stop_requested.set()
+        try:
+            if provider is not None:
+                provider.request_stop()
+        except Exception:
+            pass
         try:
             if sink is not None:
                 sink.close()
@@ -166,4 +204,6 @@ def frame_worker_main(
                 provider.close()
         except Exception:
             pass
+        if command_watcher is not None:
+            command_watcher.join(timeout=0.2)
         log.info("akvc.worker.exit")

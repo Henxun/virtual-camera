@@ -156,6 +156,7 @@ class ServiceFacade:
     def stop(self, timeout: float = 5.0) -> None:
         if self._proc is None:
             return
+        log.info("akvc.facade.stop.begin pid=%s timeout=%.3f", self._proc.pid, timeout)
         try:
             if self._cmd_q is not None:
                 self._cmd_q.put_nowait(WorkerCommand("stop"))
@@ -166,6 +167,8 @@ class ServiceFacade:
             log.warning("akvc.facade.stop.killed")
             self._proc.terminate()
             self._proc.join(timeout=2.0)
+        else:
+            log.info("akvc.facade.stop.graceful")
         self._proc = None
         self._cmd_q = None
         self._stat_q = None

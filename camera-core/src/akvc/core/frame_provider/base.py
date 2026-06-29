@@ -43,6 +43,9 @@ class FrameProvider(ABC):
         Frame with FLAG_ERROR set so the pipeline keeps producing output.
         """
 
+    def request_stop(self) -> None:
+        return None
+
     @abstractmethod
     def close(self) -> None: ...
 
