@@ -75,6 +75,8 @@ Write-Host "============================================================"
 $akDevices = @($vcams | Where-Object { $_.FriendlyName -like '*AK Virtual*' -or $_.InstanceId -like '*VCAMDEVAPI*' })
 $mfPath = (Get-ItemProperty 'HKLM:\SOFTWARE\Classes\CLSID\{3C2D3A1A-8E5F-4B8F-9C1A-2D7E5F1A3B4C}\InprocServer32').'(default)'
 $dshowPath = (Get-ItemProperty 'HKLM:\SOFTWARE\Classes\CLSID\{8E14549A-DB61-4309-AFA1-3578E927E933}\InprocServer32').'(default)'
+$mfDir = if ($mfPath) { Split-Path -Parent $mfPath } else { '' }
+$dshowDir = if ($dshowPath) { Split-Path -Parent $dshowPath } else { '' }
 Write-Host ("  AK logical devices : " + $akDevices.Count)
 Write-Host ("  MF DLL path        : " + $mfPath)
 Write-Host ("  DShow DLL path     : " + $dshowPath)
@@ -85,6 +87,6 @@ if ($akDevices.Count -gt 1) {
 } else {
     Write-Host "  Device summary     : one AK virtual camera logical device found"
 }
-if ($mfPath -ne $dshowPath) {
-    Write-Host "  NOTE               : MF and DShow DLL paths differ; verify this is intentional"
+if ($mfDir -and $dshowDir -and $mfDir -ne $dshowDir) {
+    Write-Host "  NOTE               : MF and DShow DLL directories differ; verify this is intentional"
 }
