@@ -39,6 +39,7 @@ def akvc_native_extensions(base_dir: str | Path | None = None) -> list[Pybind11E
                 _relpath(CAMERA_CORE_ROOT / "native" / "src" / "module.cpp", base),
                 _relpath(CAMERA_CORE_ROOT / "native" / "src" / "frame_types.cpp", base),
                 _relpath(CAMERA_CORE_ROOT / "native" / "src" / "pipeline_ops.cpp", base),
+                _relpath(CAMERA_CORE_ROOT / "native" / "src" / "metrics.cpp", base),
                 _relpath(CAMERA_CORE_ROOT / "native" / "src" / "providers" / "test_pattern_provider.cpp", base),
                 _relpath(CAMERA_CORE_ROOT / "native" / "src" / "providers" / "usb_provider.cpp", base),
                 _relpath(CAMERA_CORE_ROOT / "native" / "src" / "sinks" / "windows_framebus.cpp", base),

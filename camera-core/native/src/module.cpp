@@ -14,4 +14,5 @@ PYBIND11_MODULE(_core_native, m) {
     akvc::core_native::bind_windows_framebus(m);
     akvc::core_native::bind_macos_shm_sink(m);
     akvc::core_native::bind_windows_helper_client(m);
+    akvc::core_native::bind_metrics(m);
 }
