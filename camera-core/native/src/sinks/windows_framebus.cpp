@@ -2,6 +2,7 @@
 
 #include "akvc/core_native/frame_types.h"
 
+#include <cstdlib>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -22,7 +23,7 @@ public:
         ensure_windows();
         producer_ = std::make_unique<akvc::FrameBusProducer>();
         auto st = producer_->open_existing();
-        if (st != AKVC_OK) {
+        if (st != AKVC_OK && allow_create_fallback()) {
             producer_->close();
             st = producer_->create();
         }
@@ -74,6 +75,14 @@ public:
     }
 
 private:
+    static bool allow_create_fallback() {
+        const char* value = std::getenv("AKVC_ALLOW_FRAMEBUS_CREATE_FALLBACK");
+        if (value == nullptr) {
+            return false;
+        }
+        return value[0] == '1' || value[0] == 't' || value[0] == 'T' || value[0] == 'y' || value[0] == 'Y';
+    }
+
     static void ensure_windows() {
 #ifdef _WIN32
         return;

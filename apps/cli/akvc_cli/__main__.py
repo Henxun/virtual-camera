@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from akvc.core.helper.client import DEFAULT_PERSISTENT_LOG, DEFAULT_TASK_NAME, HelperService
 from akvc.runtime import find_dshow_dll
 
 CLSID = "{8E14549A-DB61-4309-AFA1-3578E927E933}"
@@ -102,12 +103,82 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         issues.append("Filter is not registered (run: akvc register).")
     if not _find_dll():
         issues.append("Cannot locate built DLL (run: python tools/make.py build).")
+    helper = HelperService()
+    helper_status = helper.scheduled_task_status()
+    if not helper_status.get("installed"):
+        issues.append("Persistent helper is not installed (run: akvc helper install).")
     if issues:
         for i, msg in enumerate(issues, 1):
             print(f"[akvc] {i}. {msg}")
         return 1
     print("[akvc] all checks passed.")
     return 0
+
+
+def cmd_helper_install(args: argparse.Namespace) -> int:
+    helper = HelperService(helper_exe=args.exe)
+    ok = helper.install_autostart(task_name=args.task_name, log_path=args.log)
+    if not ok:
+        print(f"[akvc] {helper.last_error_message or 'failed to install helper autostart.'}", file=sys.stderr)
+        return 1
+    print(f"[akvc] installed helper task {args.task_name}.")
+    return 0
+
+
+def cmd_helper_uninstall(args: argparse.Namespace) -> int:
+    helper = HelperService()
+    ok = helper.uninstall_autostart(task_name=args.task_name)
+    if not ok:
+        print(f"[akvc] {helper.last_error_message or 'failed to uninstall helper autostart.'}", file=sys.stderr)
+        return 1
+    print(f"[akvc] uninstalled helper task {args.task_name}.")
+    return 0
+
+
+def cmd_helper_start(args: argparse.Namespace) -> int:
+    helper = HelperService(helper_exe=args.exe)
+    ok = helper.start_installed(task_name=args.task_name) if args.installed_only else helper.ensure_running(task_name=args.task_name)
+    if not ok:
+        print(f"[akvc] {helper.last_error_message or 'failed to start helper.'}", file=sys.stderr)
+        return 1
+    print(f"[akvc] helper reachable on {helper.scheduled_task_status(args.task_name).get('task_name', args.task_name)}.")
+    return 0
+
+
+def cmd_helper_register_mf(args: argparse.Namespace) -> int:
+    helper = HelperService(helper_exe=args.exe)
+    if not helper.ensure_running(task_name=args.task_name):
+        print(f"[akvc] {helper.last_error_message or 'failed to start helper.'}", file=sys.stderr)
+        return 1
+    ok = helper.register_mf(name=args.name)
+    if not ok:
+        print("[akvc] failed to register MF virtual camera.", file=sys.stderr)
+        return 1
+    print(f"[akvc] MF virtual camera registered as {args.name}.")
+    return 0
+
+
+def cmd_helper_stop(args: argparse.Namespace) -> int:
+    helper = HelperService()
+    helper.stop()
+    print("[akvc] helper stop requested.")
+    return 0
+
+
+def cmd_helper_status(args: argparse.Namespace) -> int:
+    helper = HelperService()
+    task = helper.scheduled_task_status(args.task_name)
+    runtime = helper.status()
+    print(f"[akvc] Helper task:     {task.get('task_name', args.task_name)}")
+    print(f"[akvc] Installed:       {bool(task.get('installed'))}")
+    print(f"[akvc] Pipe reachable:  {bool(task.get('pipe_reachable'))}")
+    if runtime is None:
+        print("[akvc] Runtime status:  (helper not responding)")
+    else:
+        print(f"[akvc] Helper PID:      {runtime.get('pid')}")
+        print(f"[akvc] Heartbeat 100ns: {runtime.get('heartbeat_100ns')}")
+        print(f"[akvc] Producer seq:    {runtime.get('producer_seq')}")
+    return 0 if task.get("installed") or task.get("pipe_reachable") else 1
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -127,6 +198,38 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     p_doc = sub.add_parser("doctor", help="Self-check")
     p_doc.set_defaults(func=cmd_doctor)
+
+    p_helper = sub.add_parser("helper", help="Manage the persistent MF helper")
+    helper_sub = p_helper.add_subparsers(dest="helper_cmd", required=True)
+
+    p_helper_install = helper_sub.add_parser("install", help="Install helper autostart")
+    p_helper_install.add_argument("--exe", help="Path to akvc_helper.exe")
+    p_helper_install.add_argument("--task-name", default=DEFAULT_TASK_NAME, help="Scheduled task name")
+    p_helper_install.add_argument("--log", default=DEFAULT_PERSISTENT_LOG, help="Persistent helper log path")
+    p_helper_install.set_defaults(func=cmd_helper_install)
+
+    p_helper_uninstall = helper_sub.add_parser("uninstall", help="Remove helper autostart")
+    p_helper_uninstall.add_argument("--task-name", default=DEFAULT_TASK_NAME, help="Scheduled task name")
+    p_helper_uninstall.set_defaults(func=cmd_helper_uninstall)
+
+    p_helper_start = helper_sub.add_parser("start", help="Start helper or installed task")
+    p_helper_start.add_argument("--exe", help="Path to akvc_helper.exe")
+    p_helper_start.add_argument("--task-name", default=DEFAULT_TASK_NAME, help="Scheduled task name")
+    p_helper_start.add_argument("--installed-only", action="store_true", help="Only use the installed task")
+    p_helper_start.set_defaults(func=cmd_helper_start)
+
+    p_helper_register_mf = helper_sub.add_parser("register-mf", help="Register the MF virtual camera via the helper")
+    p_helper_register_mf.add_argument("--exe", help="Path to akvc_helper.exe")
+    p_helper_register_mf.add_argument("--task-name", default=DEFAULT_TASK_NAME, help="Scheduled task name")
+    p_helper_register_mf.add_argument("--name", default="AK Virtual Camera", help="MF virtual camera friendly name")
+    p_helper_register_mf.set_defaults(func=cmd_helper_register_mf)
+
+    p_helper_stop = helper_sub.add_parser("stop", help="Stop the running helper")
+    p_helper_stop.set_defaults(func=cmd_helper_stop)
+
+    p_helper_status = helper_sub.add_parser("status", help="Show helper install and runtime status")
+    p_helper_status.add_argument("--task-name", default=DEFAULT_TASK_NAME, help="Scheduled task name")
+    p_helper_status.set_defaults(func=cmd_helper_status)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

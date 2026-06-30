@@ -137,7 +137,7 @@ extern "C" HRESULT AKVCRegisterServer() {
         GetFriendlyName(),
         nullptr,
         &CLSID_VideoInputDeviceCategory,
-        GetFriendlyName(),
+        const_cast<LPWSTR>(AKVC_DSHOW_FILTER_CLSID_GUID_STR),
         &rf2);
 
     pMapper->Release();
@@ -152,7 +152,7 @@ extern "C" HRESULT AKVCUnregisterServer() {
                                   IID_PPV_ARGS(&pMapper));
     if (SUCCEEDED(hr) && pMapper) {
         pMapper->UnregisterFilter(&CLSID_VideoInputDeviceCategory,
-                                  GetFriendlyName(),
+                                  const_cast<LPWSTR>(AKVC_DSHOW_FILTER_CLSID_GUID_STR),
                                   CLSID_AKVCDShowFilter);
         pMapper->Release();
     }

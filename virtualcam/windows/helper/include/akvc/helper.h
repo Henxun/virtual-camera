@@ -10,9 +10,12 @@
 //      when the UI producer goes away, so consumers never see a frozen frame.
 //
 // Lifecycle:
-//   - Started by the desktop app (or CLI) on demand.
-//   - Exits when it receives QUIT on the pipe, when the pipe disconnects,
-//     when the parent process exits, or on CTRL+C.
+//   - Started by the desktop app / SDK / CLI on demand, or by an installed
+//     persistent launcher.
+//   - Transient mode exits when it receives QUIT on the pipe, when the pipe
+//     disconnects, when the parent process exits, or on CTRL+C.
+//   - Persistent mode ignores parent-process lifetime and keeps the frame bus
+//     and MF virtual camera alive until explicit stop/shutdown.
 //   - On crash the SHM is released by the OS (named objects persist until
 //     last handle closes); consumers see a stale frame and eventually time
 //     out.
@@ -56,6 +59,7 @@ public:
     void set_pipe_name(std::wstring pipe_name) { pipe_name_ = std::move(pipe_name); }
     void set_parent_pid(DWORD parent_pid) { parent_pid_ = parent_pid; }
     void set_log_path(std::wstring log_path) { log_path_ = std::move(log_path); }
+    void set_persistent(bool persistent) { persistent_ = persistent; }
 
     // Register the MF virtual camera with Windows. |name| is the friendly
     // name shown to applications (Chrome/OBS/etc.). Also writes the name to
@@ -107,6 +111,7 @@ private:
     HANDLE parent_process_ = nullptr;
     std::wstring mf_camera_name_;
     std::wstring log_path_;
+    bool persistent_ = false;
 };
 
 }  // namespace akvc

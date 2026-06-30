@@ -46,6 +46,7 @@ uint64_t now_100ns() noexcept {
 const wchar_t* kDefaultPipeName = L"\\\\.\\pipe\\akvc-helper-ctrl";
 
 constexpr DWORD kHeartbeatCheckMs = 50;
+constexpr wchar_t kDefaultScheduledTaskName[] = L"AKVirtualCameraHelper";
 
 enum PipeCommand : uint32_t {
     CMD_QUIT         = 0x00000001u,
@@ -139,6 +140,23 @@ bool parse_parent_pid_arg(const wchar_t* value, DWORD& parent_pid) {
     return true;
 }
 
+bool parse_bool_flag(const wchar_t* value, bool& out) {
+    if (value == nullptr || *value == L'\0') {
+        return false;
+    }
+    if (_wcsicmp(value, L"1") == 0 || _wcsicmp(value, L"true") == 0 ||
+        _wcsicmp(value, L"yes") == 0 || _wcsicmp(value, L"on") == 0) {
+        out = true;
+        return true;
+    }
+    if (_wcsicmp(value, L"0") == 0 || _wcsicmp(value, L"false") == 0 ||
+        _wcsicmp(value, L"no") == 0 || _wcsicmp(value, L"off") == 0) {
+        out = false;
+        return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 Helper::~Helper() {
@@ -151,7 +169,7 @@ bool Helper::start() {
         pipe_name_ = kDefaultPipeName;
     }
 
-    if (parent_pid_ != 0) {
+    if (parent_pid_ != 0 && !persistent_) {
         parent_process_ = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, parent_pid_);
         if (parent_process_ == nullptr) {
             const DWORD win32 = ::GetLastError();
@@ -194,10 +212,11 @@ bool Helper::start() {
 
     std::fprintf(
         stderr,
-        "[helper] started (PID=%lu pipe=%S parent_pid=%lu)\n",
+        "[helper] started (PID=%lu pipe=%S parent_pid=%lu persistent=%d)\n",
         ::GetCurrentProcessId(),
         pipe_name_.c_str(),
-        static_cast<unsigned long>(parent_pid_));
+        static_cast<unsigned long>(parent_pid_),
+        persistent_ ? 1 : 0);
     return true;
 }
 
@@ -265,15 +284,22 @@ bool Helper::register_mf_virtual_camera(const wchar_t* name) {
     GUID categories[] = { KSCATEGORY_VIDEO_CAMERA };
 
     {
-        IMFVirtualCamera* stale = nullptr;
-        if (SUCCEEDED(::MFCreateVirtualCamera(
+        for (int stale_attempt = 0; stale_attempt < 8; ++stale_attempt) {
+            IMFVirtualCamera* stale = nullptr;
+            HRESULT hrStale = ::MFCreateVirtualCamera(
                 MFVirtualCameraType_SoftwareCameraSource,
                 MFVirtualCameraLifetime_System,
                 MFVirtualCameraAccess_CurrentUser,
-                name, source_id, categories, 1, &stale)) && stale) {
+                name, source_id, categories, 1, &stale);
+            if (FAILED(hrStale) || stale == nullptr) {
+                break;
+            }
             HRESULT hrR = stale->Remove();
-            std::fprintf(stderr, "[helper] removed stale MF device hr=0x%08lx\n", hrR);
+            std::fprintf(stderr, "[helper] removed stale MF device #%d hr=0x%08lx\n", stale_attempt + 1, hrR);
             stale->Release();
+            if (FAILED(hrR)) {
+                break;
+            }
             ::Sleep(1000);
         }
     }
@@ -367,7 +393,7 @@ void Helper::heartbeat_loop() {
     const uint64_t placeholder_interval = 10000000ULL / kPlaceholderFps;
 
     while (running_) {
-        if (!is_parent_alive()) {
+        if (!persistent_ && !is_parent_alive()) {
             std::fprintf(stderr, "[helper] parent exited, shutting down\n");
             stop();
             break;
@@ -553,7 +579,7 @@ void Helper::pipe_loop() {
 
         bool connection_ready = false;
         while (running_) {
-            if (!is_parent_alive()) {
+            if (!persistent_ && !is_parent_alive()) {
                 stop();
                 break;
             }
@@ -625,6 +651,18 @@ int wmain(int argc, wchar_t* argv[]) {
                 continue;
             }
             helper.set_parent_pid(parent_pid);
+            continue;
+        }
+        if (wcscmp(argv[i], L"--persistent") == 0) {
+            bool persistent = true;
+            if (i + 1 < argc && argv[i + 1][0] != L'-') {
+                if (!akvc::parse_bool_flag(argv[i + 1], persistent)) {
+                    std::fprintf(stderr, "[helper] ignoring invalid --persistent value: %S\n", argv[i + 1]);
+                    continue;
+                }
+                ++i;
+            }
+            helper.set_persistent(persistent);
             continue;
         }
         if (wcscmp(argv[i], L"--log") == 0 && i + 1 < argc) {

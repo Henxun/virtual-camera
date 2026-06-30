@@ -19,6 +19,10 @@ class FakeHelper:
         self.ping_calls = 0
         self.register_calls: list[str] = []
         self.stop_calls = 0
+        self.installed = False
+        self.install_calls: list[tuple[str, str]] = []
+        self.uninstall_calls: list[str] = []
+        self.start_installed_calls: list[str] = []
 
     def start(self) -> bool:
         self.start_calls += 1
@@ -34,6 +38,23 @@ class FakeHelper:
 
     def stop(self) -> None:
         self.stop_calls += 1
+
+    def install_autostart(self, task_name: str, log_path: str) -> bool:
+        self.install_calls.append((task_name, log_path))
+        self.installed = True
+        return True
+
+    def uninstall_autostart(self, task_name: str) -> bool:
+        self.uninstall_calls.append(task_name)
+        self.installed = False
+        return True
+
+    def start_installed(self, task_name: str = "AKVirtualCameraHelper", timeout_s: float = 8.0) -> bool:
+        self.start_installed_calls.append(task_name)
+        return self.start_result
+
+    def scheduled_task_status(self, task_name: str = "AKVirtualCameraHelper") -> dict:
+        return {"task_name": task_name, "installed": self.installed, "pipe_reachable": self.ping_result}
 
 
 class FakeSink:

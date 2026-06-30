@@ -68,6 +68,23 @@ Write-Host ""
 Write-Host "============================================================"
 Write-Host " 4. All camera-class PnP devices (Camera / Image)"
 Write-Host "============================================================"
-Get-PnpDevice -Class Camera,Image,SoftwareDevice |
-    Where-Object { $_.FriendlyName -like '*Camera*' -or $_.FriendlyName -like '*AK*' -or $_.InstanceId -like '*VCAM*' -or $_.InstanceId -like '*USB*VID*' } |
-    Select-Object FriendlyName, Status, Class, InstanceId | Format-Table -AutoSize
+Write-Host ""
+Write-Host "============================================================"
+Write-Host " 5. Quick health summary"
+Write-Host "============================================================"
+$akDevices = @($vcams | Where-Object { $_.FriendlyName -like '*AK Virtual*' -or $_.InstanceId -like '*VCAMDEVAPI*' })
+$mfPath = (Get-ItemProperty 'HKLM:\SOFTWARE\Classes\CLSID\{3C2D3A1A-8E5F-4B8F-9C1A-2D7E5F1A3B4C}\InprocServer32').'(default)'
+$dshowPath = (Get-ItemProperty 'HKLM:\SOFTWARE\Classes\CLSID\{8E14549A-DB61-4309-AFA1-3578E927E933}\InprocServer32').'(default)'
+Write-Host ("  AK logical devices : " + $akDevices.Count)
+Write-Host ("  MF DLL path        : " + $mfPath)
+Write-Host ("  DShow DLL path     : " + $dshowPath)
+if ($akDevices.Count -gt 1) {
+    Write-Host "  WARNING            : duplicate AK virtual camera logical devices detected"
+} elseif ($akDevices.Count -eq 0) {
+    Write-Host "  WARNING            : no AK virtual camera logical device found"
+} else {
+    Write-Host "  Device summary     : one AK virtual camera logical device found"
+}
+if ($mfPath -ne $dshowPath) {
+    Write-Host "  NOTE               : MF and DShow DLL paths differ; verify this is intentional"
+}

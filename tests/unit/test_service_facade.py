@@ -25,6 +25,8 @@ class FakeHelper:
         self.ping_calls = 0
         self.register_calls: list[str] = []
         self.stop_calls = 0
+        self.installed = False
+        self.start_installed_calls: list[str] = []
 
     def start(self) -> bool:
         self.start_calls += 1
@@ -41,6 +43,13 @@ class FakeHelper:
     def stop(self) -> None:
         self.stop_calls += 1
         return None
+
+    def scheduled_task_status(self, task_name: str = "AKVirtualCameraHelper") -> dict:
+        return {"task_name": task_name, "installed": self.installed, "pipe_reachable": self.ping_result}
+
+    def start_installed(self, task_name: str = "AKVirtualCameraHelper", timeout_s: float = 8.0) -> bool:
+        self.start_installed_calls.append(task_name)
+        return self.start_result
 
 
 class FakeProvider:

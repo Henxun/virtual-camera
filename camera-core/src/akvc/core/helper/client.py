@@ -17,6 +17,8 @@ from ...runtime import find_helper_exe
 
 
 PIPE_NAME = r"\\.\pipe\akvc-helper-ctrl"
+DEFAULT_TASK_NAME = "AKVirtualCameraHelper"
+DEFAULT_PERSISTENT_LOG = str(Path(tempfile.gettempdir()) / "akvc-helper-persistent.log")
 START_TIMEOUT_S = 8.0
 
 _STARTUP_ERROR_RE = re.compile(
@@ -36,6 +38,11 @@ class HelperService:
 
     def start(self) -> bool:
         if self.ping():
+            self.last_error_message = None
+            return True
+
+        status = self.scheduled_task_status()
+        if status.get("installed") and self.start_installed():
             self.last_error_message = None
             return True
 
@@ -89,6 +96,74 @@ class HelperService:
 
     def register_mf(self, name: str = "AK Virtual Camera") -> bool:
         return bool(self._native.register_mf(name[:255]))
+
+    def install_autostart(self, task_name: str = DEFAULT_TASK_NAME, log_path: str | Path = DEFAULT_PERSISTENT_LOG) -> bool:
+        exe = find_helper_exe(self._helper_exe)
+        if exe is None:
+            self.last_error_message = (
+                "AKVC helper executable not found. Ensure akvc/_runtime/windows/akvc_helper.exe "
+                "is packaged with the application or set AKVC_HELPER_EXE explicitly."
+            )
+            return False
+        ok = bool(self._native.install_autostart(str(exe), str(log_path), task_name))
+        if not ok:
+            detail = self._native.last_launch_error
+            self.last_error_message = (
+                f"Failed to install persistent AKVC helper task {task_name} ({detail})."
+                if detail else f"Failed to install persistent AKVC helper task {task_name}."
+            )
+        else:
+            self.last_error_message = None
+        return ok
+
+    def uninstall_autostart(self, task_name: str = DEFAULT_TASK_NAME) -> bool:
+        ok = bool(self._native.uninstall_autostart(task_name))
+        if not ok:
+            detail = self._native.last_launch_error
+            self.last_error_message = (
+                f"Failed to uninstall persistent AKVC helper task {task_name} ({detail})."
+                if detail else f"Failed to uninstall persistent AKVC helper task {task_name}."
+            )
+        else:
+            self.last_error_message = None
+        return ok
+
+    def start_installed(self, task_name: str = DEFAULT_TASK_NAME, timeout_s: float = START_TIMEOUT_S) -> bool:
+        if self.ping():
+            self.last_error_message = None
+            return True
+        ok = bool(self._native.start_installed(task_name))
+        if not ok:
+            detail = self._native.last_launch_error
+            self.last_error_message = (
+                f"Failed to start installed AKVC helper task {task_name} ({detail})."
+                if detail else f"Failed to start installed AKVC helper task {task_name}."
+            )
+            return False
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if self.ping():
+                self.last_error_message = None
+                return True
+            time.sleep(0.05)
+        self.last_error_message = (
+            f"Installed AKVC helper task {task_name} started but did not expose pipe {PIPE_NAME} in time."
+        )
+        return False
+
+    def scheduled_task_status(self, task_name: str = DEFAULT_TASK_NAME) -> dict:
+        return dict(self._native.scheduled_task_status(task_name))
+
+    def ensure_running(self, *, task_name: str = DEFAULT_TASK_NAME, prefer_installed: bool = True) -> bool:
+        if self.ping():
+            self.last_error_message = None
+            return True
+        if prefer_installed:
+            status = self.scheduled_task_status(task_name)
+            if status.get("installed"):
+                if self.start_installed(task_name=task_name):
+                    return True
+        return self.start()
 
     def _launch(self, exe: Path) -> bool:
         self._startup_log_path = Path(tempfile.gettempdir()) / "akvc-helper-startup.log"

@@ -3,12 +3,15 @@
 #include "akvc/core_native/frame_types.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 
 #ifdef _WIN32
 #include <windows.h>
+#include <shellapi.h>
 #endif
 
 #include "akvc_protocol.h"
@@ -26,7 +29,22 @@ constexpr std::uint32_t RSP_OK = 0x00000000u;
 constexpr std::uint32_t RSP_PONG = 0x00000001u;
 
 constexpr const wchar_t* PIPE_NAME = L"\\\\.\\pipe\\akvc-helper-ctrl";
+constexpr const wchar_t* DEFAULT_TASK_NAME = L"AKVirtualCameraHelper";
 constexpr std::uint32_t WAIT_TIMEOUT_MS = 250;
+
+std::wstring quote_for_cmd(const std::wstring& value) {
+    std::wstring out;
+    out.reserve(value.size() + 2);
+    out.push_back(L'"');
+    for (wchar_t ch : value) {
+        if (ch == L'"') {
+            out.push_back(L'\\');
+        }
+        out.push_back(ch);
+    }
+    out.push_back(L'"');
+    return out;
+}
 
 }  // namespace
 
@@ -115,6 +133,67 @@ public:
         std::memcpy(&rsp, data.data(), sizeof(rsp));
         return rsp == RSP_OK;
 #else
+        throw std::runtime_error("Windows helper client is only available on Windows");
+#endif
+    }
+
+    bool install_autostart(const std::wstring& exe_path, const std::wstring& log_path, const std::wstring& task_name = DEFAULT_TASK_NAME) {
+#ifdef _WIN32
+        last_launch_error_.clear();
+        if (exe_path.empty()) {
+            last_launch_error_ = "helper executable path is empty";
+            return false;
+        }
+        const std::wstring resolved_log = log_path.empty() ? std::wstring(L"%TEMP%\\akvc-helper-persistent.log") : log_path;
+        const std::wstring task = task_name.empty() ? std::wstring(DEFAULT_TASK_NAME) : task_name;
+        std::wstring task_run = quote_for_cmd(exe_path) + L" --persistent --log " + quote_for_cmd(resolved_log);
+        std::wstring args =
+            L"/create /f /tn " + quote_for_cmd(task) +
+            L" /sc onlogon /rl highest /tr " + quote_for_cmd(task_run);
+        return run_schtasks(args, true);
+#else
+        (void)exe_path;
+        (void)log_path;
+        (void)task_name;
+        throw std::runtime_error("Windows helper client is only available on Windows");
+#endif
+    }
+
+    bool uninstall_autostart(const std::wstring& task_name = DEFAULT_TASK_NAME) {
+#ifdef _WIN32
+        last_launch_error_.clear();
+        const std::wstring task = task_name.empty() ? std::wstring(DEFAULT_TASK_NAME) : task_name;
+        std::wstring args = L"/delete /f /tn " + quote_for_cmd(task);
+        return run_schtasks(args, true);
+#else
+        (void)task_name;
+        throw std::runtime_error("Windows helper client is only available on Windows");
+#endif
+    }
+
+    bool start_installed(const std::wstring& task_name = DEFAULT_TASK_NAME) {
+#ifdef _WIN32
+        last_launch_error_.clear();
+        const std::wstring task = task_name.empty() ? std::wstring(DEFAULT_TASK_NAME) : task_name;
+        std::wstring args = L"/run /tn " + quote_for_cmd(task);
+        return run_schtasks(args, false);
+#else
+        (void)task_name;
+        throw std::runtime_error("Windows helper client is only available on Windows");
+#endif
+    }
+
+    py::dict scheduled_task_status(const std::wstring& task_name = DEFAULT_TASK_NAME) {
+#ifdef _WIN32
+        last_launch_error_.clear();
+        const std::wstring task = task_name.empty() ? std::wstring(DEFAULT_TASK_NAME) : task_name;
+        py::dict out;
+        out["task_name"] = py::cast(task);
+        out["installed"] = py::bool_(scheduled_task_exists(task));
+        out["pipe_reachable"] = py::bool_(ping());
+        return out;
+#else
+        (void)task_name;
         throw std::runtime_error("Windows helper client is only available on Windows");
 #endif
     }
@@ -209,8 +288,110 @@ public:
         return last_launch_error_;
     }
 
-private:
 #ifdef _WIN32
+    bool run_schtasks(const std::wstring& args, bool elevate) {
+        SHELLEXECUTEINFOW sei{};
+        sei.cbSize = sizeof(sei);
+        sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+        sei.lpVerb = elevate && !is_process_elevated() ? L"runas" : L"open";
+        sei.lpFile = L"schtasks.exe";
+        sei.lpParameters = args.c_str();
+        sei.nShow = SW_HIDE;
+        if (!::ShellExecuteExW(&sei)) {
+            last_launch_error_ = win32_message("ShellExecuteExW", ::GetLastError());
+            return false;
+        }
+        DWORD wait_rc = ::WaitForSingleObject(sei.hProcess, 30000);
+        if (wait_rc != WAIT_OBJECT_0) {
+            ::TerminateProcess(sei.hProcess, 1);
+            ::CloseHandle(sei.hProcess);
+            last_launch_error_ = "command timed out";
+            return false;
+        }
+        DWORD exit_code = 1;
+        ::GetExitCodeProcess(sei.hProcess, &exit_code);
+        ::CloseHandle(sei.hProcess);
+        if (exit_code != 0) {
+            std::ostringstream oss;
+            oss << "command exit=" << exit_code;
+            last_launch_error_ = oss.str();
+            return false;
+        }
+        return true;
+    }
+
+    bool run_shell_command(const std::wstring& command) {
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+        std::wstring cmdline = L"cmd.exe /c " + command;
+        const BOOL ok = ::CreateProcessW(
+            nullptr,
+            cmdline.data(),
+            nullptr,
+            nullptr,
+            FALSE,
+            CREATE_NO_WINDOW,
+            nullptr,
+            nullptr,
+            &si,
+            &pi);
+        if (!ok) {
+            last_launch_error_ = win32_message("CreateProcessW", ::GetLastError());
+            return false;
+        }
+        ::CloseHandle(pi.hThread);
+        DWORD wait_rc = ::WaitForSingleObject(pi.hProcess, 30000);
+        if (wait_rc != WAIT_OBJECT_0) {
+            ::TerminateProcess(pi.hProcess, 1);
+            ::CloseHandle(pi.hProcess);
+            last_launch_error_ = "command timed out";
+            return false;
+        }
+        DWORD exit_code = 1;
+        ::GetExitCodeProcess(pi.hProcess, &exit_code);
+        ::CloseHandle(pi.hProcess);
+        if (exit_code != 0) {
+            std::ostringstream oss;
+            oss << "command exit=" << exit_code;
+            last_launch_error_ = oss.str();
+            return false;
+        }
+        return true;
+    }
+
+    bool scheduled_task_exists(const std::wstring& task_name) {
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+        std::wstring cmdline = L"cmd.exe /c schtasks /query /tn " + quote_for_cmd(task_name);
+        const BOOL ok = ::CreateProcessW(
+            nullptr,
+            cmdline.data(),
+            nullptr,
+            nullptr,
+            FALSE,
+            CREATE_NO_WINDOW,
+            nullptr,
+            nullptr,
+            &si,
+            &pi);
+        if (!ok) {
+            return false;
+        }
+        ::CloseHandle(pi.hThread);
+        DWORD wait_rc = ::WaitForSingleObject(pi.hProcess, 15000);
+        if (wait_rc != WAIT_OBJECT_0) {
+            ::TerminateProcess(pi.hProcess, 1);
+            ::CloseHandle(pi.hProcess);
+            return false;
+        }
+        DWORD exit_code = 1;
+        ::GetExitCodeProcess(pi.hProcess, &exit_code);
+        ::CloseHandle(pi.hProcess);
+        return exit_code == 0;
+    }
+
     std::vector<std::uint8_t> transact(
         std::uint32_t cmd,
         const std::vector<std::uint8_t>& payload = {}) {
@@ -283,6 +464,10 @@ void bind_windows_helper_client(py::module_& m) {
         .def("register_mf", &NativeWindowsHelperClient::register_mf, py::arg("name"))
         .def("quit", &NativeWindowsHelperClient::quit)
         .def("launch", &NativeWindowsHelperClient::launch, py::arg("exe_path"), py::arg("parent_pid"), py::arg("log_path"))
+        .def("install_autostart", &NativeWindowsHelperClient::install_autostart, py::arg("exe_path"), py::arg("log_path"), py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
+        .def("uninstall_autostart", &NativeWindowsHelperClient::uninstall_autostart, py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
+        .def("start_installed", &NativeWindowsHelperClient::start_installed, py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
+        .def("scheduled_task_status", &NativeWindowsHelperClient::scheduled_task_status, py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
         .def("is_process_elevated", &NativeWindowsHelperClient::is_process_elevated)
         .def_property_readonly("last_pipe_error", &NativeWindowsHelperClient::last_pipe_error)
         .def_property_readonly("last_launch_error", &NativeWindowsHelperClient::last_launch_error);
