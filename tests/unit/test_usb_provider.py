@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from akvc.core.frame import FLAG_ERROR
-from akvc.core.frame_provider.usb import UsbCameraProvider
+from akvc._core_native import FLAG_ERROR
+from apps.desktop.akvc_app.services.source_info import ProviderInfo
+from apps.desktop.akvc_app.workers.source_provider import UsbCameraProvider
 
 
 class FakeCapture:
@@ -24,38 +25,52 @@ class FakeCapture:
         self.released = True
 
 
-class FakeOpenCapture:
-    def __init__(self, backend: int, opened: bool) -> None:
-        self.backend = backend
-        self._opened = opened
-        self.released = False
-        self.properties: list[tuple[int, int]] = []
-        self.raise_on_props: set[int] = set()
+class FakeNativeCapture:
+    def __init__(self) -> None:
+        self.closed = False
 
-    def isOpened(self) -> bool:
-        return self._opened
-
-    def release(self) -> None:
-        self.released = True
-
-    def set(self, prop: int, value: int) -> bool:
-        self.properties.append((prop, value))
-        if prop in self.raise_on_props:
-            raise RuntimeError(f"unsupported property {prop}")
-        return True
+    def close(self) -> None:
+        self.closed = True
 
 
-class FakeProbeCapture:
-    def __init__(self, backend: int, opened: bool) -> None:
-        self.backend = backend
-        self._opened = opened
-        self.released = False
+class FakeOpener:
+    def __init__(self, result: object | Exception) -> None:
+        self.result = result
+        self.calls: list[tuple[int, str]] = []
 
-    def isOpened(self) -> bool:
-        return self._opened
+    def open(self, device_index: int, backend: str) -> object:
+        self.calls.append((device_index, backend))
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
 
-    def release(self) -> None:
-        self.released = True
+
+class FakeProber:
+    def __init__(self, indices: list[int]) -> None:
+        self.indices = indices
+        self.calls: list[int] = []
+
+    def list_indices(self, max_probe: int) -> list[int]:
+        self.calls.append(max_probe)
+        return list(self.indices)
+
+
+def fake_native_provider_info(*, id: str, name: str):
+    class NativeFormat:
+        def __init__(self) -> None:
+            self.fourcc = 0x20424752
+            self.width = 1280
+            self.height = 720
+            self.fps_num = 30
+            self.fps_den = 1
+
+    class NativeInfo:
+        def __init__(self) -> None:
+            self.id = id
+            self.name = name
+            self.formats = [NativeFormat()]
+
+    return NativeInfo()
 
 
 def test_read_returns_stop_requested_error_after_stop_request() -> None:
@@ -95,7 +110,7 @@ def test_read_returns_error_after_double_failure() -> None:
     assert frame.meta == {"reason": "read failed"}
 
 
-def test_close_is_idempotent_and_releases_capture() -> None:
+def test_close_is_idempotent_and_releases_legacy_capture() -> None:
     provider = UsbCameraProvider(device_index=0)
     capture = FakeCapture([])
     provider._cap = capture
@@ -107,181 +122,56 @@ def test_close_is_idempotent_and_releases_capture() -> None:
     assert provider._cap is None
 
 
-def test_list_devices_preserves_probe_order_and_provider_shape(monkeypatch) -> None:
-    captures: list[FakeProbeCapture] = []
-    seen: list[tuple[int, int]] = []
+def test_close_is_idempotent_and_closes_native_capture() -> None:
+    provider = UsbCameraProvider(device_index=0)
+    capture = FakeNativeCapture()
+    provider._cap = capture
 
-    def fake_video_capture(index: int, backend: int) -> FakeProbeCapture:
-        seen.append((index, backend))
-        outcomes = {
-            (0, provider_backend("msmf", 0)): False,
-            (0, provider_backend("dshow", 0)): True,
-            (1, provider_backend("msmf", 0)): True,
-            (2, provider_backend("msmf", 0)): False,
-            (2, provider_backend("dshow", 0)): False,
-        }
-        capture = FakeProbeCapture(backend, outcomes[(index, backend)])
-        captures.append(capture)
-        return capture
+    provider.close()
+    provider.close()
 
-    monkeypatch.setattr("akvc.core.frame_provider.usb.cv2.VideoCapture", fake_video_capture)
-
-    devices = UsbCameraProvider.list_devices(max_probe=3)
-
-    assert [device.id for device in devices] == ["usb:0", "usb:1"]
-    assert [device.name for device in devices] == ["USB Camera 0", "USB Camera 1"]
-    assert [device.formats for device in devices] == [(), ()]
-    assert seen == [
-        (0, provider_backend("msmf", 0)),
-        (0, provider_backend("dshow", 0)),
-        (1, provider_backend("msmf", 0)),
-        (2, provider_backend("msmf", 0)),
-        (2, provider_backend("dshow", 0)),
-    ]
-    assert all(capture.released for capture in captures)
+    assert capture.closed is True
+    assert provider._cap is None
 
 
-def test_list_devices_respects_max_probe(monkeypatch) -> None:
-    seen: list[int] = []
+def test_list_devices_uses_native_prober(monkeypatch) -> None:
+    prober = FakeProber([2, 5])
 
-    def fake_video_capture(index: int, backend: int) -> FakeProbeCapture:
-        seen.append(index)
-        return FakeProbeCapture(backend, opened=False)
+    def fake_list_usb_sources(max_probe: int = 8, width: int = 1280, height: int = 720, fps: int = 30):
+        return [
+            fake_native_provider_info(id=f"usb:{i}", name=f"USB Camera {i}")
+            for i in prober.list_indices(max_probe)
+        ]
 
-    monkeypatch.setattr("akvc.core.frame_provider.usb.cv2.VideoCapture", fake_video_capture)
+    monkeypatch.setattr("apps.desktop.akvc_app.workers.source_provider._list_usb_sources", fake_list_usb_sources)
 
-    assert UsbCameraProvider.list_devices(max_probe=2) == []
-    assert seen == [0, 0, 1, 1]
+    devices = UsbCameraProvider.list_devices(max_probe=8)
 
-
-def test_list_devices_skips_dshow_when_msmf_succeeds(monkeypatch) -> None:
-    seen: list[tuple[int, int]] = []
-
-    def fake_video_capture(index: int, backend: int) -> FakeProbeCapture:
-        seen.append((index, backend))
-        return FakeProbeCapture(backend, opened=True)
-
-    monkeypatch.setattr("akvc.core.frame_provider.usb.cv2.VideoCapture", fake_video_capture)
-
-    devices = UsbCameraProvider.list_devices(max_probe=2)
-
-    assert [device.id for device in devices] == ["usb:0", "usb:1"]
-    assert seen == [
-        (0, provider_backend("msmf", 0)),
-        (1, provider_backend("msmf", 0)),
+    assert prober.calls == [8]
+    assert devices == [
+        ProviderInfo(id="usb:2", name="USB Camera 2", formats=devices[0].formats),
+        ProviderInfo(id="usb:5", name="USB Camera 5", formats=devices[1].formats),
     ]
 
 
-def test_open_preserves_backend_fallback_order(monkeypatch) -> None:
-    seen: list[int] = []
-
-    def fake_video_capture(index: int, backend: int) -> FakeOpenCapture:
-        seen.append(backend)
-        return FakeOpenCapture(backend, opened=(len(seen) == 2))
-
-    monkeypatch.setattr("akvc.core.frame_provider.usb.cv2.VideoCapture", fake_video_capture)
-
-    provider = UsbCameraProvider(device_index=0, backend="msmf")
-    provider.open()
-
-    assert seen[:2] == [provider_backend("msmf", 0), provider_backend("msmf", 1)]
-    assert provider._cap is not None
-
-
-    captures: list[FakeOpenCapture] = []
-
-    def fake_video_capture(index: int, backend: int) -> FakeOpenCapture:
-        capture = FakeOpenCapture(backend, opened=(len(captures) == 1))
-        captures.append(capture)
-        return capture
-
-    monkeypatch.setattr("akvc.core.frame_provider.usb.cv2.VideoCapture", fake_video_capture)
-
-    provider = UsbCameraProvider(device_index=0, backend="msmf")
-    provider.open()
-
-    assert captures[0].released is True
-    assert captures[1].released is False
-    assert provider._cap is captures[1]
-
-
-def test_open_configures_successful_capture_properties(monkeypatch) -> None:
-    capture = FakeOpenCapture(provider_backend("msmf", 0), opened=True)
-
-    def fake_video_capture(index: int, backend: int) -> FakeOpenCapture:
-        return capture
-
-    monkeypatch.setattr("akvc.core.frame_provider.usb.cv2.VideoCapture", fake_video_capture)
-
-    provider = UsbCameraProvider(device_index=0, width=640, height=480, fps=25, backend="msmf")
-    provider.open()
-
-    import cv2
-
-    assert capture.properties == [
-        (cv2.CAP_PROP_FRAME_WIDTH, 640),
-        (cv2.CAP_PROP_FRAME_HEIGHT, 480),
-        (cv2.CAP_PROP_FPS, 25),
-        (cv2.CAP_PROP_BUFFERSIZE, 1),
-        (cv2.CAP_PROP_READ_TIMEOUT_MSEC, 250),
-    ]
-
-
-def test_open_ignores_property_set_exceptions(monkeypatch) -> None:
-    import cv2
-
-    capture = FakeOpenCapture(provider_backend("msmf", 0), opened=True)
-    capture.raise_on_props = {cv2.CAP_PROP_BUFFERSIZE, cv2.CAP_PROP_READ_TIMEOUT_MSEC}
-
-    def fake_video_capture(index: int, backend: int) -> FakeOpenCapture:
-        return capture
-
-    monkeypatch.setattr("akvc.core.frame_provider.usb.cv2.VideoCapture", fake_video_capture)
-
-    provider = UsbCameraProvider(device_index=0, backend="msmf")
-    provider.open()
-
-    assert provider._cap is capture
-    assert capture.released is False
-
-
-def test_open_raises_after_all_backends_fail(monkeypatch) -> None:
-    def fake_video_capture(index: int, backend: int) -> FakeOpenCapture:
-        return FakeOpenCapture(backend, opened=False)
-
-    monkeypatch.setattr("akvc.core.frame_provider.usb.cv2.VideoCapture", fake_video_capture)
-
+def test_open_uses_native_opener_result() -> None:
     provider = UsbCameraProvider(device_index=3, backend="msmf")
+    opener = FakeOpener(FakeNativeCapture())
+    provider._opener = opener
+
+    provider.open()
+
+    assert opener.calls == [(3, "msmf")]
+    assert provider._cap is opener.result
+
+
+def test_open_propagates_native_open_failure() -> None:
+    provider = UsbCameraProvider(device_index=3, backend="msmf")
+    provider._opener = FakeOpener(RuntimeError("Cannot open USB camera 3: device index out of range"))
 
     try:
         provider.open()
     except RuntimeError as exc:
-        assert str(exc) == "Cannot open USB camera 3: None"
+        assert str(exc) == "Cannot open USB camera 3: device index out of range"
     else:
-        raise AssertionError("open should fail after all backends fail")
-
-
-def test_open_keeps_successful_capture_unreleased(monkeypatch) -> None:
-    capture = FakeOpenCapture(provider_backend("dshow", 0), opened=True)
-
-    def fake_video_capture(index: int, backend: int) -> FakeOpenCapture:
-        return capture
-
-    monkeypatch.setattr("akvc.core.frame_provider.usb.cv2.VideoCapture", fake_video_capture)
-
-    provider = UsbCameraProvider(device_index=0, backend="dshow")
-    provider.open()
-
-    assert provider._cap is capture
-    assert capture.released is False
-
-
-def provider_backend(kind: str, index: int) -> int:
-    import cv2
-
-    order = {
-        "msmf": [cv2.CAP_MSMF, cv2.CAP_DSHOW, cv2.CAP_ANY],
-        "dshow": [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY],
-        "any": [cv2.CAP_ANY, cv2.CAP_MSMF, cv2.CAP_DSHOW],
-    }
-    return order[kind][index]
+        raise AssertionError("open should fail when native opener fails")

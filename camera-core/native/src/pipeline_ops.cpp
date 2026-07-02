@@ -5,7 +5,6 @@
 #include <vector>
 
 namespace akvc::core_native {
-
 Frame resize_rgb24_frame(const Frame& frame, std::int32_t target_w, std::int32_t target_h) {
     if (frame.fourcc != FOURCC_RGB24 || frame.width == target_w && frame.height == target_h) {
         return frame;

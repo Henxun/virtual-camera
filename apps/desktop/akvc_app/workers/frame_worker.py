@@ -25,22 +25,22 @@ from typing import Any, Optional
 
 import numpy as np
 
-from akvc.core import logging as akvc_log
-from akvc.core.frame_pipeline import (
-    ColorConvertStage,
-    FpsRegulator,
-    FramePipeline,
-    ResizeStage,
+from akvc._core_native import (
+    NativeFpsRegulator,
+    NativeMacOsShmSink,
+    NativeMetrics,
+    NativeWindowsFrameBusProducer,
+    resize_rgb24_frame,
+    rgb24_to_nv12_frame,
 )
-from akvc.core.frame_provider import (
+
+from ..services import app_logging as akvc_log
+from ..services.source_info import (
     DEFAULT_PROVIDER_FPS,
     DEFAULT_PROVIDER_HEIGHT,
     DEFAULT_PROVIDER_WIDTH,
-    FrameProvider,
-    create_provider_from_source_id,
 )
-from akvc.core.frame_sink import create_sink, FrameSink
-from akvc.core.metrics import Metrics
+from .source_provider import FrameProvider, create_provider_from_source_id
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +83,14 @@ def _start_command_watcher(
     return watcher
 
 
+def _create_native_sink() -> object:
+    if sys.platform == "win32":
+        return NativeWindowsFrameBusProducer()
+    if sys.platform == "darwin":
+        return NativeMacOsShmSink()
+    raise RuntimeError(f"worker unsupported on platform: {sys.platform}")
+
+
 def frame_worker_main(
     source_id: str,
     cmd_q: "mp.Queue[WorkerCommand]",
@@ -101,10 +109,11 @@ def frame_worker_main(
             pass
 
     provider: Optional[FrameProvider] = None
-    sink: Optional[FrameSink] = None
-    metrics = Metrics()
+    sink: Optional[object] = None
+    metrics = NativeMetrics()
     stop_requested = threading.Event()
     command_watcher: threading.Thread | None = None
+    regulator = NativeFpsRegulator(30.0, 10.0)
 
     try:
         provider = _build_provider(source_id)
@@ -117,16 +126,9 @@ def frame_worker_main(
                 f"worker unsupported on platform: {sys.platform}"
             )
 
-        sink = create_sink()
+        sink = _create_native_sink()
         sink.open()
         log.info("akvc.worker.sink_open")
-
-        pipeline = (
-            FramePipeline()
-            .add(ResizeStage(target_w=1280, target_h=720))
-            .add(FpsRegulator(target_fps=30.0))
-            .add(ColorConvertStage(dst="NV12"))
-        )
 
         last_metrics_t = time.perf_counter()
         last_preview_t = 0.0
@@ -153,7 +155,9 @@ def frame_worker_main(
                 except (queue.Full, Exception):
                     pass
 
-            frame = pipeline.process(frame)
+            frame = resize_rgb24_frame(frame, 1280, 720)
+            frame = regulator.process(frame)
+            frame = rgb24_to_nv12_frame(frame)
             if stop_requested.is_set():
                 break
 

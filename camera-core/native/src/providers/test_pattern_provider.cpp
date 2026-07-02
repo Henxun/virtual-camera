@@ -24,19 +24,29 @@ public:
           frame_period_(1.0 / static_cast<double>(fps)) {}
 
     void open() {
+        stop_requested_ = false;
         next_t_ = std::chrono::steady_clock::now();
         opened_ = true;
     }
 
     Frame read() {
         if (!opened_) {
+            if (stop_requested_) {
+                return stop_frame();
+            }
             open();
+        }
+        if (stop_requested_) {
+            return stop_frame();
         }
 
         const auto now = std::chrono::steady_clock::now();
         if (now < next_t_) {
             py::gil_scoped_release release;
             std::this_thread::sleep_for(next_t_ - now);
+        }
+        if (stop_requested_) {
+            return stop_frame();
         }
         next_t_ += std::chrono::duration_cast<std::chrono::steady_clock::duration>(
             std::chrono::duration<double>(frame_period_));
@@ -56,7 +66,12 @@ public:
     }
 
     void close() {
+        stop_requested_ = true;
         opened_ = false;
+    }
+
+    void request_stop() {
+        stop_requested_ = true;
     }
 
 private:
@@ -86,6 +101,24 @@ private:
         }
         render_colorbar(out, seq);
         return data;
+    }
+
+    Frame stop_frame() const {
+        auto data = py::array_t<std::uint8_t>(static_cast<py::ssize_t>(width_) * height_ * 3);
+        std::memset(data.mutable_data(), 0, static_cast<std::size_t>(data.nbytes()));
+        py::dict meta;
+        meta["reason"] = "stop requested";
+        return Frame(
+            width_,
+            height_,
+            FOURCC_RGB24,
+            std::move(data),
+            now_pts_100ns(),
+            seq_,
+            FLAG_ERROR,
+            {width_ * 3, 0},
+            {width_ * height_ * 3, 0},
+            std::move(meta));
     }
 
     void render_colorbar(std::uint8_t* out, std::uint64_t seq) const {
@@ -232,6 +265,7 @@ private:
     double frame_period_;
     std::chrono::steady_clock::time_point next_t_{};
     std::uint64_t seq_ = 0;
+    bool stop_requested_ = false;
     bool opened_ = false;
 };
 
@@ -240,6 +274,7 @@ void bind_test_pattern_provider(py::module_& m) {
         .def(py::init<std::int32_t, std::int32_t, std::int32_t, const std::string&>(), py::arg("width"), py::arg("height"), py::arg("fps"), py::arg("pattern"))
         .def("open", &NativeTestPatternProvider::open)
         .def("read", &NativeTestPatternProvider::read)
+        .def("request_stop", &NativeTestPatternProvider::request_stop)
         .def("close", &NativeTestPatternProvider::close);
 }
 

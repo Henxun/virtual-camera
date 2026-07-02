@@ -25,6 +25,8 @@ class MainWindow(QMainWindow):
     def __init__(self, vm: MainViewModel) -> None:
         super().__init__()
         self.vm = vm
+        self._running = False
+        self._busy = False
         self.setWindowTitle("AK Virtual Camera")
         self.resize(560, 540)
 
@@ -88,12 +90,15 @@ class MainWindow(QMainWindow):
         self.vm.sources_changed.connect(self._on_sources)
         self.vm.selected_source_changed.connect(self._on_selected_source)
         self.vm.running_changed.connect(self._on_running)
+        self.vm.busy_changed.connect(self._on_busy_changed)
+        self.vm.state_text_changed.connect(self._on_state_text_changed)
         self.vm.metrics_changed.connect(self._on_metrics)
         self.vm.preview_changed.connect(self._on_preview)
         self.vm.error.connect(self._on_error)
 
         # Populate sources after signal connections are established.
         self.vm.refresh_sources()
+        self._sync_controls()
 
     @Slot(list)
     def _on_sources(self, sources: list) -> None:
@@ -122,11 +127,23 @@ class MainWindow(QMainWindow):
 
     @Slot(bool)
     def _on_running(self, running: bool) -> None:
-        self._btn_start.setEnabled(not running)
-        self._btn_stop.setEnabled(running)
-        self._source_combo.setEnabled(not running)
-        self._lbl_state.setText("Streaming" if running else "Idle")
+        self._running = running
         self._preview_label.setVisible(running)
+        self._sync_controls()
+
+    @Slot(bool)
+    def _on_busy_changed(self, busy: bool) -> None:
+        self._busy = busy
+        self._sync_controls()
+
+    @Slot(str)
+    def _on_state_text_changed(self, text: str) -> None:
+        self._lbl_state.setText(text)
+
+    def _sync_controls(self) -> None:
+        self._btn_start.setEnabled(not self._busy and not self._running)
+        self._btn_stop.setEnabled(not self._busy and self._running)
+        self._source_combo.setEnabled(not self._busy and not self._running)
 
     @Slot(object)
     def _on_preview(self, pix: QPixmap) -> None:

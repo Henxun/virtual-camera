@@ -14,9 +14,9 @@ class FakeSignal:
     def connect(self, callback) -> None:
         self._callbacks.append(callback)
 
-    def emit(self, value) -> None:
+    def emit(self, *args) -> None:
         for callback in list(self._callbacks):
-            callback(value)
+            callback(*args)
 
 
 class FakeVm:
@@ -24,6 +24,8 @@ class FakeVm:
         self.sources_changed = FakeSignal()
         self.selected_source_changed = FakeSignal()
         self.running_changed = FakeSignal()
+        self.busy_changed = FakeSignal()
+        self.state_text_changed = FakeSignal()
         self.metrics_changed = FakeSignal()
         self.preview_changed = FakeSignal()
         self.error = FakeSignal()
@@ -78,3 +80,31 @@ def test_selected_source_signal_does_not_reenter_select_source() -> None:
     vm.selected_source_changed.emit("test:checkerboard")
 
     assert vm.selected_calls == []
+
+
+def test_busy_and_running_states_drive_controls() -> None:
+    _get_app()
+    vm = FakeVm()
+    window = MainWindow(vm)
+
+    assert window._btn_start.isEnabled()
+    assert not window._btn_stop.isEnabled()
+    assert window._source_combo.isEnabled()
+    assert window._lbl_state.text() == "Idle"
+
+    vm.busy_changed.emit(True)
+    vm.state_text_changed.emit("Starting…")
+
+    assert not window._btn_start.isEnabled()
+    assert not window._btn_stop.isEnabled()
+    assert not window._source_combo.isEnabled()
+    assert window._lbl_state.text() == "Starting…"
+
+    vm.busy_changed.emit(False)
+    vm.running_changed.emit(True)
+    vm.state_text_changed.emit("Streaming")
+
+    assert not window._btn_start.isEnabled()
+    assert window._btn_stop.isEnabled()
+    assert not window._source_combo.isEnabled()
+    assert window._lbl_state.text() == "Streaming"

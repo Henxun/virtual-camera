@@ -16,4 +16,7 @@ PYBIND11_MODULE(_core_native, m) {
     akvc::core_native::bind_windows_helper_client(m);
     akvc::core_native::bind_metrics(m);
     akvc::core_native::bind_protocol(m);
+    akvc::core_native::bind_provider_factory(m);
+    akvc::core_native::bind_virtual_camera_session(m);
+    akvc::core_native::bind_runtime_host(m);
 }

@@ -67,6 +67,9 @@ public:
     py::dict meta;
 };
 
+Frame resize_rgb24_frame(const Frame& frame, std::int32_t target_w, std::int32_t target_h);
+Frame rgb24_to_nv12_frame(const Frame& frame);
+
 void bind_frame_types(py::module_& m);
 
 }  // namespace akvc::core_native

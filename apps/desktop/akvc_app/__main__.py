@@ -3,13 +3,12 @@
 
 from __future__ import annotations
 
-import multiprocessing as mp
 import sys
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from akvc.core import logging as akvc_log
+from .services import app_logging as akvc_log
 
 from .services.facade import ServiceFacade
 from .viewmodels.main_vm import MainViewModel
@@ -17,9 +16,6 @@ from .views.main_window import MainWindow
 
 
 def main() -> int:
-    # Ensure clean spawn semantics on Windows.
-    mp.set_start_method("spawn", force=True)
-
     log_dir = Path.home() / "AppData" / "Local" / "AKVC" / "logs"
     log = akvc_log.configure(level="INFO", log_dir=log_dir, component="akvc.app")
     log.info("akvc.app.start version=%s", "0.2.0")

@@ -4,21 +4,15 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
 import sys
-import time
+import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
-from akvc.core.frame_provider import (
-    Pattern,
-    ProviderInfo,
-    TestPatternProvider,
-    UsbCameraProvider,
-)
-from akvc.core.helper.client import HelperService
+from akvc._core_native import NativeRuntimeHost
 
-from ..workers.frame_worker import WorkerCommand, frame_worker_main
+from .helper_service import HelperService
+from .source_info import ProviderInfo, list_test_pattern_sources, list_usb_sources
 
 log = logging.getLogger(__name__)
 
@@ -42,26 +36,15 @@ class ServiceState:
 
 
 class ServiceFacade:
-    """Facade between Qt ViewModels and camera-core / FrameWorker subprocess."""
+    """Facade between Qt ViewModels and native runtime host."""
 
     def __init__(self) -> None:
         self._state = ServiceState()
-        self._proc: Optional[mp.Process] = None
-        self._cmd_q: Optional[mp.Queue] = None
-        self._stat_q: Optional[mp.Queue] = None
-        self._preview_q: Optional[mp.Queue] = None
-        # HelperService is Windows-only (it spawns akvc_helper.exe which
-        # registers the MF VirtualCamera and owns the Global\ shared memory).
-        # On macOS the Camera Extension is activated by a native host app
-        # (see virtualcam/macos/host); the Python side just publishes frames
-        # to the POSIX shm region. Phase 4 will wire the host-app activation
-        # through a small native bridge — until then macOS start() opens the
-        # sink directly.
+        self._runtime = NativeRuntimeHost()
+        self._runtime_mu = threading.RLock()
         self._is_windows = sys.platform == "win32"
         self._helper = HelperService() if self._is_windows else None
         self._device_registered = False
-
-    # ---------- lifecycle ----------
 
     def bootstrap(self) -> None:
         log.info("akvc.facade.bootstrap")
@@ -72,17 +55,12 @@ class ServiceFacade:
     def shutdown(self) -> None:
         log.info("akvc.facade.shutdown")
         self.stop()
-        # Tear down the helper process. The MF VirtualCamera uses system
-        # lifetime, so helper shutdown stops it without removing the stable
-        # PnP node; the next helper lifetime re-starts/re-registers as needed.
         if self._helper is not None:
             try:
                 self._helper.stop()
             except Exception:
                 pass
         self._device_registered = False
-
-    # ---------- source management ----------
 
     def list_sources(self) -> list[ProviderInfo]:
         return list(self._state.sources)
@@ -95,20 +73,15 @@ class ServiceFacade:
 
     def _discover_sources(self) -> list[ProviderInfo]:
         try:
-            usb = UsbCameraProvider.list_devices(max_probe=4)
+            usb = list_usb_sources(max_probe=4)
         except Exception:  # pragma: no cover
             log.exception("usb probe failed")
             usb = []
-        # Built-in test patterns.
-        patterns: list[ProviderInfo] = []
-        for p in Pattern:
-            patterns.append(TestPatternProvider(pattern=p).describe())
-        return list(usb) + patterns
-
-    # ---------- start / stop ----------
+        patterns = list_test_pattern_sources()
+        return list(usb) + list(patterns)
 
     def start(self) -> None:
-        if self._proc is not None and self._proc.is_alive():
+        if self._state.worker_status.running:
             log.info("akvc.facade.start.already_running")
             return
         if not self._state.selected_source_id:
@@ -119,7 +92,7 @@ class ServiceFacade:
             helper_was_alive = self._helper.ping()
             if not helper_was_alive:
                 self._device_registered = False
-            if not self._helper.start():
+            if not self._helper.ensure_running():
                 detail = self._helper.last_error_message or "failed to start akvc helper"
                 raise RuntimeError(detail)
             if not self._helper.ping():
@@ -131,76 +104,34 @@ class ServiceFacade:
                 else:
                     raise RuntimeError("failed to register MF virtual camera")
         else:
-            # macOS: the Camera Extension is activated out-of-band by the
-            # native host app. The Python producer just opens the POSIX shm
-            # sink inside the worker. # VERIFY: Phase 4 will add a host-app
-            # activation hook here once the Swift bridge exists.
             if not self._device_registered:
                 log.info("akvc.facade.macos_assume_extension_active")
                 self._device_registered = True
 
-        ctx = mp.get_context("spawn")
-        self._cmd_q = ctx.Queue(maxsize=8)
-        self._stat_q = ctx.Queue(maxsize=64)
-        self._preview_q = ctx.Queue(maxsize=4)
-        self._proc = ctx.Process(
-            target=frame_worker_main,
-            args=(self._state.selected_source_id, self._cmd_q, self._stat_q, self._preview_q),
-            daemon=True,
-            name="akvc-frame-worker",
-        )
-        self._proc.start()
+        with self._runtime_mu:
+            self._runtime.start_source(self._state.selected_source_id)
         self._state.worker_status.running = True
-        log.info(
-            "akvc.facade.start pid=%s source=%s",
-            self._proc.pid,
-            self._state.selected_source_id,
-        )
+        log.info("akvc.facade.start source=%s", self._state.selected_source_id)
 
     def stop(self, timeout: float = 5.0) -> None:
-        if self._proc is None:
+        if not self._state.worker_status.running:
             return
-        log.info("akvc.facade.stop.begin pid=%s timeout=%.3f", self._proc.pid, timeout)
-        try:
-            if self._cmd_q is not None:
-                self._cmd_q.put_nowait(WorkerCommand("stop"))
-        except Exception:
-            pass
-        self._proc.join(timeout=timeout)
-        if self._proc.is_alive():
-            log.warning("akvc.facade.stop.killed")
-            self._proc.terminate()
-            self._proc.join(timeout=2.0)
-        else:
-            log.info("akvc.facade.stop.graceful")
-        self._proc = None
-        self._cmd_q = None
-        self._stat_q = None
+        log.info("akvc.facade.stop.begin timeout=%.3f", timeout)
+        with self._runtime_mu:
+            self._runtime.stop()
         self._state.worker_status.running = False
+        log.info("akvc.facade.stop.graceful")
 
     def poll_status(self) -> WorkerStatus:
         st = self._state.worker_status
-        if self._stat_q is None:
-            return st
-        try:
-            while True:
-                msg = self._stat_q.get_nowait()
-                kind = msg.get("kind")
-                if kind == "metrics":
-                    st.fps = float(msg.get("fps", 0.0))
-                    st.frames_published = int(msg.get("frames_published", 0))
-                    st.frames_dropped = int(msg.get("frames_dropped", 0))
-                    st.consumer_count = int(msg.get("consumer_count", 0))
-                elif kind == "error":
-                    st.last_error = str(msg.get("error", ""))
-        except Exception:
-            pass
-        # Drain preview queue.
-        if self._preview_q is not None:
-            try:
-                while True:
-                    st.last_preview = self._preview_q.get_nowait()
-            except Exception:
-                pass
-        st.running = bool(self._proc and self._proc.is_alive())
+        with self._runtime_mu:
+            snap = dict(self._runtime.snapshot())
+        st.fps = float(snap.get("fps") or 0.0)
+        st.frames_published = int(snap.get("frames_published") or 0)
+        st.frames_dropped = int(snap.get("frames_dropped") or 0)
+        st.consumer_count = int(snap.get("consumer_count") or 0)
+        st.last_error = None if snap.get("last_error") is None else str(snap.get("last_error"))
+        preview = snap.get("last_preview")
+        st.last_preview = None if preview is None else bytes(preview)
+        st.running = bool(snap.get("running"))
         return st
