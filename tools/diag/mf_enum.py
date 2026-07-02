@@ -11,10 +11,23 @@ POWERSHELL_SCRIPT = r'''
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null = [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType=WindowsRuntime]
-$selector = [Windows.Devices.Enumeration.DeviceClass]::VideoCapture
-$op = [Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync($selector)
-$awaiter = $op.GetAwaiter()
-$devices = $awaiter.GetResult()
+$op = [Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync([Windows.Devices.Enumeration.DeviceClass]::VideoCapture)
+$method = [System.WindowsRuntimeSystemExtensions].GetMethods() |
+    Where-Object {
+        $_.Name -eq 'AsTask' -and
+        $_.IsGenericMethodDefinition -and
+        $_.GetGenericArguments().Count -eq 1 -and
+        $_.GetParameters().Count -eq 1 -and
+        $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+    } |
+    Select-Object -First 1
+if (-not $method) {
+    throw 'AsTask<TResult>(IAsyncOperation<TResult>) overload not found'
+}
+$closed = $method.MakeGenericMethod([Windows.Devices.Enumeration.DeviceInformationCollection])
+$task = $closed.Invoke($null, @($op))
+$task.Wait()
+$devices = $task.Result
 $result = @()
 foreach ($device in $devices) {
     $result += [PSCustomObject]@{

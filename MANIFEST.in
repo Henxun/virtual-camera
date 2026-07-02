@@ -6,8 +6,8 @@ include setup.py
 include build_support.py
 include camera-core/build_support.py
 
-recursive-include camera-core/src *.py
-recursive-include camera-core/src *.typed
+recursive-include akvc *.py
+recursive-include akvc *.typed
 recursive-include camera-core/native *.cpp
 recursive-include virtualcam/windows/framebus/src *
 recursive-include virtualcam/windows/framebus/include *

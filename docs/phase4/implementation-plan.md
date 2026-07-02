@@ -110,7 +110,7 @@ virtualcam/macos/
 ### 3.2 Python
 
 ```
-camera-core/src/akvc/core/frame_sink/
+akvc/core/frame_sink/
 ├── _protocol.py          # NEW: 跨平台共享协议常量
 ├── windows_shm.py        # 重构为 import _protocol（行为不变）
 ├── macos_shm.py          # NEW: POSIX shm 生产者

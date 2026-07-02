@@ -17,10 +17,12 @@ prints a friendly error.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import shutil
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -340,6 +342,17 @@ def _check_windows() -> None:
         sys.exit(1)
 
 
+def _ensure_python_build_dependencies() -> int:
+    missing: list[str] = []
+    if importlib.util.find_spec("pybind11") is None:
+        missing.append("pybind11>=2.12")
+    if importlib.util.find_spec("numpy") is None:
+        missing.append("numpy>=1.26,<3.0")
+    if not missing:
+        return 0
+    return _run([sys.executable, "-m", "pip", "install", *missing])
+
+
 def _ensure_baseclasses() -> None:
     """Fetch DirectShow BaseClasses sources from Windows-classic-samples.
 
@@ -647,8 +660,30 @@ def _install_windows_runtime(prefix: Path, args: argparse.Namespace) -> int:
     ], env=_build_env())
 
 
+def _sync_windows_runtime_into_source_tree(prefix: Path) -> None:
+    runtime_bin = prefix / "bin"
+    runtime_pkg = ROOT / "akvc" / "_runtime" / "windows"
+    runtime_pkg.mkdir(parents=True, exist_ok=True)
+    for name in ("akvc_helper.exe", "akvc-dshow.dll", "akvc-mf.dll"):
+        shutil.copy2(runtime_bin / name, runtime_pkg / name)
+
+    staged_native = prefix / "akvc"
+    source_native = ROOT / "akvc"
+    ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or ".pyd"
+    legacy_named = source_native / f"_core_native{ext_suffix}"
+    plain_named = source_native / "_core_native.pyd"
+
+    for artifact in staged_native.glob("_core_native*.pyd"):
+        shutil.copy2(artifact, plain_named)
+        if legacy_named != plain_named:
+            shutil.copy2(artifact, legacy_named)
+
+
 def cmd_configure(_: argparse.Namespace) -> int:
     _check_windows()
+    rc = _ensure_python_build_dependencies()
+    if rc != 0:
+        return rc
     _ensure_baseclasses()
     _build_baseclasses()
     BUILD.mkdir(exist_ok=True)
@@ -661,7 +696,10 @@ def cmd_build(args: argparse.Namespace) -> int:
     if rc != 0:
         return rc
     if args.python:
-        # Editable install
+        rc = _install_windows_runtime(PACKAGE_RUNTIME, args)
+        if rc != 0:
+            return rc
+        _sync_windows_runtime_into_source_tree(PACKAGE_RUNTIME)
         rc = _run([sys.executable, "-m", "pip", "install", "-e",
                    str(ROOT / "camera-core")])
         if rc != 0:
@@ -686,9 +724,12 @@ def cmd_register(_: argparse.Namespace) -> int:
 
 def cmd_unregister(_: argparse.Namespace) -> int:
     _check_windows()
-    if not DSHOW_DLL.exists():
-        print(f"[make] DLL not found at {DSHOW_DLL}, attempting unregister anyway")
-    return _run(["regsvr32", "/u", "/s", str(DSHOW_DLL)])
+    cmd = [sys.executable, "-m", "akvc_cli", "unregister"]
+    if DSHOW_DLL.exists():
+        cmd.extend(["--dll", str(DSHOW_DLL)])
+    else:
+        print(f"[make] DLL not found at {DSHOW_DLL}, relying on CLI lookup")
+    return _run(cmd)
 
 
 def cmd_run(_: argparse.Namespace) -> int:

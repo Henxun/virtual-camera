@@ -10,8 +10,12 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from akvc.core.helper.client import DEFAULT_PERSISTENT_LOG, DEFAULT_TASK_NAME, HelperService
-from akvc.runtime import find_dshow_dll
+from akvc_app.services.helper_service import (
+    DEFAULT_PERSISTENT_LOG,
+    DEFAULT_TASK_NAME,
+    HelperService,
+)
+from akvc_app.services.windows_runtime import find_dshow_dll
 
 CLSID = "{8E14549A-DB61-4309-AFA1-3578E927E933}"
 FRIENDLY_NAME = "AK Virtual Camera"
@@ -64,25 +68,45 @@ def cmd_register(args: argparse.Namespace) -> int:
 
 
 def cmd_unregister(args: argparse.Namespace) -> int:
+    registered = _read_inproc_path()
     dll = Path(args.dll) if args.dll else _find_dll()
-    if dll is None:
-        # Try registered path
-        registered = _read_inproc_path()
-        if registered:
-            dll = Path(registered)
-    if dll is None or not dll.is_file():
-        print("[akvc] cannot find akvc-dshow.dll. Pass --dll PATH.", file=sys.stderr)
-        return 2
+    if dll is None and registered:
+        dll = Path(registered)
+
     if not _is_admin():
         print("[akvc] unregister requires Administrator.", file=sys.stderr)
         return 3
-    print(f"[akvc] regsvr32 /u /s {dll}")
-    rc = subprocess.call(["regsvr32", "/u", "/s", str(dll)])
-    if rc != 0:
-        print(f"[akvc] regsvr32 returned {rc}", file=sys.stderr)
+
+    helper = HelperService()
+    helper_ok = helper.ensure_running(task_name=DEFAULT_TASK_NAME)
+    mf_ok = False
+    if helper_ok:
+        mf_ok = helper.unregister_mf()
+        if mf_ok:
+            print("[akvc] MF virtual camera removed or already absent.")
+        else:
+            print("[akvc] failed to remove MF virtual camera.", file=sys.stderr)
     else:
-        print("[akvc] unregistered.")
-    return rc
+        print(f"[akvc] {helper.last_error_message or 'failed to start helper for MF unregister.'}", file=sys.stderr)
+
+    dshow_ok = False
+    if registered:
+        target = Path(registered)
+        print(f"[akvc] regsvr32 /u /s {target}")
+        dshow_rc = subprocess.call(["regsvr32", "/u", "/s", str(target)])
+        if dshow_rc != 0:
+            print(f"[akvc] regsvr32 returned {dshow_rc}", file=sys.stderr)
+        else:
+            print("[akvc] DShow filter unregistered.")
+            dshow_ok = True
+    elif dll is not None and dll.is_file():
+        print("[akvc] DShow filter already absent.")
+        dshow_ok = True
+    else:
+        print("[akvc] DShow filter already absent and no DLL lookup was needed.")
+        dshow_ok = True
+
+    return 0 if mf_ok and dshow_ok else 1
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -212,13 +236,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_helper_uninstall.add_argument("--task-name", default=DEFAULT_TASK_NAME, help="Scheduled task name")
     p_helper_uninstall.set_defaults(func=cmd_helper_uninstall)
 
-    p_helper_start = helper_sub.add_parser("start", help="Start helper or installed task")
+    p_helper_start = helper_sub.add_parser("start", help="Start the helper process only (does not register the MF camera)")
     p_helper_start.add_argument("--exe", help="Path to akvc_helper.exe")
     p_helper_start.add_argument("--task-name", default=DEFAULT_TASK_NAME, help="Scheduled task name")
     p_helper_start.add_argument("--installed-only", action="store_true", help="Only use the installed task")
     p_helper_start.set_defaults(func=cmd_helper_start)
 
-    p_helper_register_mf = helper_sub.add_parser("register-mf", help="Register the MF virtual camera via the helper")
+    p_helper_register_mf = helper_sub.add_parser("register-mf", help="Register or repair the MF virtual camera via the helper")
     p_helper_register_mf.add_argument("--exe", help="Path to akvc_helper.exe")
     p_helper_register_mf.add_argument("--task-name", default=DEFAULT_TASK_NAME, help="Scheduled task name")
     p_helper_register_mf.add_argument("--name", default="AK Virtual Camera", help="MF virtual camera friendly name")

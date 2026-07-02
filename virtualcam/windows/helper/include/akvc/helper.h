@@ -66,6 +66,10 @@ public:
     // HKLM\SOFTWARE\AKVC\FriendlyName so the DShow filter can read it.
     bool register_mf_virtual_camera(const wchar_t* name);
 
+    // Remove the MF virtual camera from Windows. Succeeds if the device is
+    // already absent.
+    bool unregister_mf_virtual_camera();
+
     // Signal the helper to stop. Thread-safe.
     void stop();
 

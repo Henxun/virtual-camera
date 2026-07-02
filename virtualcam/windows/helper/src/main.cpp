@@ -49,10 +49,11 @@ constexpr DWORD kHeartbeatCheckMs = 50;
 constexpr wchar_t kDefaultScheduledTaskName[] = L"AKVirtualCameraHelper";
 
 enum PipeCommand : uint32_t {
-    CMD_QUIT         = 0x00000001u,
-    CMD_PING         = 0x00000002u,
-    CMD_STATUS       = 0x00000003u,
-    CMD_REGISTER_MF  = 0x00000004u,
+    CMD_QUIT          = 0x00000001u,
+    CMD_PING          = 0x00000002u,
+    CMD_STATUS        = 0x00000003u,
+    CMD_REGISTER_MF   = 0x00000004u,
+    CMD_UNREGISTER_MF = 0x00000005u,
 };
 
 enum PipeResponse : uint32_t {
@@ -155,6 +156,10 @@ bool parse_bool_flag(const wchar_t* value, bool& out) {
         return true;
     }
     return false;
+}
+
+bool is_mf_camera_absent_hresult(HRESULT hr) {
+    return hr == static_cast<HRESULT>(0xC00D36B2L);
 }
 
 }  // namespace
@@ -359,6 +364,75 @@ bool Helper::register_mf_virtual_camera(const wchar_t* name) {
     return true;
 }
 
+bool Helper::unregister_mf_virtual_camera() {
+    HRESULT hrCo = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(hrCo)) {
+        std::fprintf(stderr, "[helper] CoInitializeEx failed during unregister: 0x%08lx\n", hrCo);
+        return false;
+    }
+    HRESULT hrMf = ::MFStartup(MF_VERSION, MFSTARTUP_FULL);
+    if (FAILED(hrMf)) {
+        std::fprintf(stderr, "[helper] MFStartup failed during unregister: 0x%08lx\n", hrMf);
+        ::CoUninitialize();
+        return false;
+    }
+
+    bool removed = true;
+    bool attempted = false;
+    std::wstring registered_name = mf_camera_name_;
+
+    if (mf_camera_ != nullptr) {
+        attempted = true;
+        HRESULT hrStop = mf_camera_->Stop();
+        std::fprintf(stderr, "[helper] MF Virtual Camera stop before remove hr=0x%08lx\n", hrStop);
+        HRESULT hrRemove = mf_camera_->Remove();
+        std::fprintf(stderr, "[helper] MF Virtual Camera remove hr=0x%08lx\n", hrRemove);
+        mf_camera_->Release();
+        mf_camera_ = nullptr;
+        mf_camera_name_.clear();
+        removed = SUCCEEDED(hrRemove) || is_mf_camera_absent_hresult(hrRemove);
+    }
+
+    if (removed) {
+        wchar_t source_id[64];
+        StringFromGUID2(CLSID_AKVCMFSource, source_id, 64);
+        GUID categories[] = { KSCATEGORY_VIDEO_CAMERA };
+        const wchar_t* name = registered_name.empty() ? AKVC_CAMERA_NAME : registered_name.c_str();
+
+        for (int stale_attempt = 0; stale_attempt < 8; ++stale_attempt) {
+            IMFVirtualCamera* stale = nullptr;
+            HRESULT hrStale = ::MFCreateVirtualCamera(
+                MFVirtualCameraType_SoftwareCameraSource,
+                MFVirtualCameraLifetime_System,
+                MFVirtualCameraAccess_CurrentUser,
+                name, source_id, categories, 1, &stale);
+            if (FAILED(hrStale) || stale == nullptr) {
+                break;
+            }
+            attempted = true;
+            HRESULT hrRemove = stale->Remove();
+            std::fprintf(stderr, "[helper] removed MF device #%d hr=0x%08lx\n", stale_attempt + 1, hrRemove);
+            stale->Release();
+            if (FAILED(hrRemove) && !is_mf_camera_absent_hresult(hrRemove)) {
+                removed = false;
+                break;
+            }
+            if (is_mf_camera_absent_hresult(hrRemove)) {
+                break;
+            }
+            ::Sleep(250);
+        }
+    }
+
+    if (!attempted) {
+        std::fprintf(stderr, "[helper] MF Virtual Camera already absent\n");
+    }
+
+    ::MFShutdown();
+    ::CoUninitialize();
+    return removed;
+}
+
 void Helper::stop() {
     running_ = false;
 }
@@ -501,6 +575,11 @@ bool Helper::handle_client(HANDLE pipe) {
             }
 
             const uint32_t response = register_mf_virtual_camera(name_buf) ? RSP_OK : RSP_UNKNOWN;
+            return write_exact(pipe, &response, sizeof(response));
+        }
+
+        case CMD_UNREGISTER_MF: {
+            const uint32_t response = unregister_mf_virtual_camera() ? RSP_OK : RSP_UNKNOWN;
             return write_exact(pipe, &response, sizeof(response));
         }
 

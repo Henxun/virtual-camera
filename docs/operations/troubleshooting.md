@@ -1,5 +1,12 @@
 # Troubleshooting
 
+## 2026-07-01 — CMake-native `_core_native` configure fails with `No module named pybind11`
+
+- Symptom: after moving `akvc._core_native` into the root CMake graph, `uv run tools/make.py configure` stopped in `camera-core/native/CMakeLists.txt` because `python -m pybind11 --cmakedir` failed.
+- Root cause: the active project virtualenv did not have the `pybind11` Python module installed, so CMake could not discover the pip-installed pybind11 CMake config directory.
+- Fix: make `tools/make.py configure` self-check Python build dependencies and install missing `pybind11` / `numpy` into the active environment before running root CMake configure.
+- Verification: build log `.akvc/logs/build/20260701T082103-attempt-03-configure.log` should no longer contain `No module named pybind11` and should proceed into the project configure/build stage.
+
 ## 2026-06-22 — `tools/make.py build --python` fails with `No module named pip`
 
 - Symptom: native build completes, then the `--python` editable-install phase fails because `.venv\Scripts\python.exe` cannot import `pip`.
@@ -16,9 +23,9 @@
 
 ## 2026-06-22 — dev-mode `akvc register` can target stale packaged runtime DLLs
 
-- Symptom: in an editable/dev checkout, `akvc status` showed the registered DLL path under `camera-core\src\akvc\_runtime\windows\akvc-dshow.dll` even after a fresh native rebuild produced `build\bin\Release\akvc-dshow.dll`.
+- Symptom: in an editable/dev checkout, `akvc status` showed the registered DLL path under `akvc\_runtime\windows\akvc-dshow.dll` even after a fresh native rebuild produced `build\bin\Release\akvc-dshow.dll`.
 - Root cause: `akvc.runtime._find_asset()` preferred packaged resources before local build outputs, so CLI registration in a development environment could bind the system registration to an older packaged DLL instead of the freshly built one.
-- Fix: in development mode, check `build/bin/Release/*` candidates before packaged resources in `camera-core/src/akvc/runtime.py`.
+- Fix: in development mode, check `build/bin/Release/*` candidates before packaged resources in `akvc/runtime.py`.
 - Verification: `akvc status` now reports `Build DLL: E:\workspace\virtual-camera\build\bin\Release\akvc-dshow.dll`, and after explicit re-register the registered `Inproc DLL` also points at the build output.
 
 ## 2026-06-22 — `VideoInputDeviceCategory` instance key is named by friendly name, not CLSID

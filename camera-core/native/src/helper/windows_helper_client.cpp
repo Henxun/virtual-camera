@@ -2,12 +2,15 @@
 
 #include "akvc/core_native/frame_types.h"
 
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -24,12 +27,15 @@ constexpr std::uint32_t CMD_QUIT = 0x00000001u;
 constexpr std::uint32_t CMD_PING = 0x00000002u;
 constexpr std::uint32_t CMD_STATUS = 0x00000003u;
 constexpr std::uint32_t CMD_REGISTER_MF = 0x00000004u;
+constexpr std::uint32_t CMD_UNREGISTER_MF = 0x00000005u;
 
 constexpr std::uint32_t RSP_OK = 0x00000000u;
 constexpr std::uint32_t RSP_PONG = 0x00000001u;
 
 constexpr const wchar_t* PIPE_NAME = L"\\\\.\\pipe\\akvc-helper-ctrl";
 constexpr const wchar_t* DEFAULT_TASK_NAME = L"AKVirtualCameraHelper";
+constexpr const wchar_t* DEFAULT_LOG_NAME = L"akvc-helper-persistent.log";
+constexpr double START_TIMEOUT_S = 8.0;
 constexpr std::uint32_t WAIT_TIMEOUT_MS = 250;
 
 std::wstring quote_for_cmd(const std::wstring& value) {
@@ -44,6 +50,29 @@ std::wstring quote_for_cmd(const std::wstring& value) {
     }
     out.push_back(L'"');
     return out;
+}
+
+std::wstring to_wstring(const std::string& value) {
+    return py::str(value).cast<std::wstring>();
+}
+
+std::string to_string(const std::wstring& value) {
+    return py::cast(value).cast<std::string>();
+}
+
+std::wstring default_log_path() {
+#ifdef _WIN32
+    wchar_t temp_path[MAX_PATH]{};
+    DWORD length = ::GetTempPathW(MAX_PATH, temp_path);
+    if (length == 0 || length >= MAX_PATH) {
+        return std::wstring(DEFAULT_LOG_NAME);
+    }
+    std::filesystem::path path(temp_path);
+    path /= DEFAULT_LOG_NAME;
+    return path.wstring();
+#else
+    return std::wstring(DEFAULT_LOG_NAME);
+#endif
 }
 
 }  // namespace
@@ -111,6 +140,21 @@ public:
             std::memcpy(payload.data() + sizeof(wchar_count), wide.data(), wide.size() * sizeof(wchar_t));
         }
         const auto data = transact(CMD_REGISTER_MF, payload);
+        if (data.size() < sizeof(std::uint32_t)) {
+            return false;
+        }
+        std::uint32_t rsp = 0;
+        std::memcpy(&rsp, data.data(), sizeof(rsp));
+        return rsp == RSP_OK;
+#else
+        throw std::runtime_error("Windows helper client is only available on Windows");
+#endif
+    }
+
+    bool unregister_mf() {
+#ifdef _WIN32
+        last_pipe_error_.clear();
+        const auto data = transact(CMD_UNREGISTER_MF);
         if (data.size() < sizeof(std::uint32_t)) {
             return false;
         }
@@ -191,6 +235,95 @@ public:
         out["task_name"] = py::cast(task);
         out["installed"] = py::bool_(scheduled_task_exists(task));
         out["pipe_reachable"] = py::bool_(ping());
+        return out;
+#else
+        (void)task_name;
+        throw std::runtime_error("Windows helper client is only available on Windows");
+#endif
+    }
+
+    bool start_service(const std::string& helper_exe = std::string(),
+                       const std::string& task_name = std::string()) {
+#ifdef _WIN32
+        if (ping()) {
+            last_error_message_.clear();
+            return true;
+        }
+
+        const std::wstring task = task_name.empty() ? std::wstring(DEFAULT_TASK_NAME) : to_wstring(task_name);
+        if (scheduled_task_exists(task) && start_installed(task)) {
+            if (wait_for_ping(START_TIMEOUT_S)) {
+                last_error_message_.clear();
+                return true;
+            }
+            if (last_error_message_.empty()) {
+                std::ostringstream oss;
+                oss << "Installed AKVC helper task " << to_string(task)
+                    << " started but did not expose pipe in time.";
+                last_error_message_ = oss.str();
+            }
+            return false;
+        }
+
+        const std::wstring exe = helper_exe.empty() ? std::wstring() : to_wstring(helper_exe);
+        if (exe.empty()) {
+            last_error_message_ =
+                "AKVC helper executable not found. Ensure akvc/_runtime/windows/akvc_helper.exe is packaged with the application or set AKVC_HELPER_EXE explicitly.";
+            return false;
+        }
+        if (!launch(exe, ::GetCurrentProcessId(), default_log_path())) {
+            if (last_error_message_.empty()) {
+                describe_start_failure(exe);
+            }
+            return false;
+        }
+        if (wait_for_ping(START_TIMEOUT_S)) {
+            last_error_message_.clear();
+            return true;
+        }
+        describe_start_failure(exe);
+        return false;
+#else
+        (void)helper_exe;
+        (void)task_name;
+        throw std::runtime_error("Windows helper client is only available on Windows");
+#endif
+    }
+
+    bool ensure_running(const std::string& helper_exe = std::string(),
+                        const std::string& task_name = std::string(),
+                        bool prefer_installed = true) {
+#ifdef _WIN32
+        if (ping()) {
+            last_error_message_.clear();
+            return true;
+        }
+        const std::wstring task = task_name.empty() ? std::wstring(DEFAULT_TASK_NAME) : to_wstring(task_name);
+        if (prefer_installed && scheduled_task_exists(task)) {
+            if (start_installed(task) && wait_for_ping(START_TIMEOUT_S)) {
+                last_error_message_.clear();
+                return true;
+            }
+        }
+        return start_service(helper_exe, task_name);
+#else
+        (void)helper_exe;
+        (void)task_name;
+        (void)prefer_installed;
+        throw std::runtime_error("Windows helper client is only available on Windows");
+#endif
+    }
+
+    py::dict status_summary(const std::string& task_name = std::string()) {
+#ifdef _WIN32
+        const std::wstring task = task_name.empty() ? std::wstring(DEFAULT_TASK_NAME) : to_wstring(task_name);
+        py::dict out = scheduled_task_status(task);
+        py::object runtime = status();
+        if (runtime.is_none()) {
+            out["runtime"] = py::none();
+        } else {
+            out["runtime"] = runtime;
+        }
         return out;
 #else
         (void)task_name;
@@ -286,6 +419,10 @@ public:
 
     std::string last_launch_error() const {
         return last_launch_error_;
+    }
+
+    std::string last_error_message() const {
+        return last_error_message_;
     }
 
 #ifdef _WIN32
@@ -445,6 +582,37 @@ public:
         return response;
     }
 
+    bool wait_for_ping(double timeout_s) {
+#ifdef _WIN32
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout_s);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (ping()) {
+                last_error_message_.clear();
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        return false;
+#else
+        (void)timeout_s;
+        return false;
+#endif
+    }
+
+    void describe_start_failure(const std::wstring& exe_path) {
+        std::ostringstream oss;
+        oss << "AKVC helper at " << to_string(exe_path)
+            << " did not start or the control pipe " << to_string(PIPE_NAME)
+            << " is not ready.";
+        if (!last_launch_error_.empty()) {
+            oss << " " << last_launch_error_;
+        }
+        if (!last_pipe_error_.empty()) {
+            oss << " " << last_pipe_error_;
+        }
+        last_error_message_ = oss.str();
+    }
+
     static std::string win32_message(const char* op, DWORD err) {
         std::ostringstream oss;
         oss << op << " err=" << err;
@@ -454,6 +622,7 @@ public:
 
     std::string last_pipe_error_;
     std::string last_launch_error_;
+    std::string last_error_message_;
 };
 
 void bind_windows_helper_client(py::module_& m) {
@@ -461,16 +630,21 @@ void bind_windows_helper_client(py::module_& m) {
         .def(py::init<>())
         .def("ping", &NativeWindowsHelperClient::ping)
         .def("status", &NativeWindowsHelperClient::status)
+        .def("status_summary", &NativeWindowsHelperClient::status_summary, py::arg("task_name") = std::string())
         .def("register_mf", &NativeWindowsHelperClient::register_mf, py::arg("name"))
+        .def("unregister_mf", &NativeWindowsHelperClient::unregister_mf)
         .def("quit", &NativeWindowsHelperClient::quit)
         .def("launch", &NativeWindowsHelperClient::launch, py::arg("exe_path"), py::arg("parent_pid"), py::arg("log_path"))
         .def("install_autostart", &NativeWindowsHelperClient::install_autostart, py::arg("exe_path"), py::arg("log_path"), py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
         .def("uninstall_autostart", &NativeWindowsHelperClient::uninstall_autostart, py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
         .def("start_installed", &NativeWindowsHelperClient::start_installed, py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
         .def("scheduled_task_status", &NativeWindowsHelperClient::scheduled_task_status, py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
+        .def("start_service", &NativeWindowsHelperClient::start_service, py::arg("helper_exe") = std::string(), py::arg("task_name") = std::string())
+        .def("ensure_running", &NativeWindowsHelperClient::ensure_running, py::arg("helper_exe") = std::string(), py::arg("task_name") = std::string(), py::arg("prefer_installed") = true)
         .def("is_process_elevated", &NativeWindowsHelperClient::is_process_elevated)
         .def_property_readonly("last_pipe_error", &NativeWindowsHelperClient::last_pipe_error)
-        .def_property_readonly("last_launch_error", &NativeWindowsHelperClient::last_launch_error);
+        .def_property_readonly("last_launch_error", &NativeWindowsHelperClient::last_launch_error)
+        .def_property_readonly("last_error_message", &NativeWindowsHelperClient::last_error_message);
 }
 
 }  // namespace akvc::core_native

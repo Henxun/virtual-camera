@@ -11,7 +11,7 @@ This document is the explicit Phase 3 exit gate for the Windows Media Foundation
 | A3 | Helper install surface exists | `uv run akvc helper status` | command exits 0 and prints helper install/runtime state |
 | A4 | Helper install succeeds | `uv run akvc helper install` (admin/elevated approval if needed) | scheduled task or equivalent persistent launcher exists |
 | A5 | MF COM registration is healthy | `powershell -ExecutionPolicy Bypass -File tools/diag/camera_audit.ps1` | MF source CLSID points at current `akvc-mf.dll`; `ThreadingModel=Both` |
-| A6 | MF registration/start succeeds | `uv run akvc helper start` then `uv run akvc helper status` | helper reachable; MF virtual camera marked registered/started; no `ACCESS_DENIED` |
+| A6 | MF registration/start succeeds | `uv run akvc helper start`, then `uv run akvc helper register-mf`, then `uv run akvc helper status` | helper reachable; MF virtual camera explicitly registered/repaired; no `ACCESS_DENIED` |
 
 ## B. Persistent helper lifecycle
 
@@ -21,7 +21,7 @@ This document is the explicit Phase 3 exit gate for the Windows Media Foundation
 | B2 | App start reuses persistent helper | start desktop app, click Start, then inspect `akvc helper status` | helper PID remains stable or is reused instead of respawn-per-start |
 | B3 | Worker does not become bus owner | stop helper, then attempt stream start | start fails with actionable ownership error instead of silently creating `Global\\akvc-frames-v1` |
 | B4 | Explicit helper stop works | `uv run akvc helper stop` then `uv run akvc helper status` | helper transitions to not running |
-| B5 | Autostart config persists | reinstall or relaunch environment, then `uv run akvc helper status` | installed state remains visible without manual reconfiguration |
+| B5 | Autostart config persists | reinstall or relaunch environment, then `uv run akvc helper status` and, if MF enumeration is required, `uv run akvc helper register-mf` | installed state remains visible without manual reconfiguration; helper liveness is distinct from MF registration |
 
 ## C. MF enumeration & open path
 
@@ -47,7 +47,7 @@ This document is the explicit Phase 3 exit gate for the Windows Media Foundation
 |---|---|---|---|
 | E1 | Helper uninstall removes persistent launcher | `uv run akvc helper uninstall` | helper autostart registration no longer exists |
 | E2 | Repair path is explicit | invoke documented repair flow only when diagnostics show stale registration | no unnecessary remove/recreate on healthy startup |
-| E3 | Manual stop leaves recoverable state | `uv run akvc helper stop`, then `uv run akvc helper start` | helper and MF camera can recover without deleting nodes manually |
+| E3 | Manual stop leaves recoverable state | `uv run akvc helper stop`, then `uv run akvc helper start`, then `uv run akvc helper register-mf` | helper and MF camera can recover without deleting nodes manually |
 
 ## F. Phase 3 exit decision
 

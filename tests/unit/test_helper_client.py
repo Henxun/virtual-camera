@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from akvc.core.helper.client import DEFAULT_PERSISTENT_LOG, HelperService
+from apps.desktop.akvc_app.services.helper_service import DEFAULT_PERSISTENT_LOG, HelperService
 
 
 class FakeNative:
@@ -12,11 +12,16 @@ class FakeNative:
         self.ping_values = [False]
         self.last_launch_error = ""
         self.last_pipe_error = ""
+        self.last_error_message = ""
         self.install_calls: list[tuple[str, str, str]] = []
         self.uninstall_calls: list[str] = []
         self.start_installed_calls: list[str] = []
         self.launch_calls: list[tuple[str, int, str]] = []
+        self.start_service_calls: list[str] = []
+        self.ensure_running_calls: list[tuple[str, str, bool]] = []
         self.quit_calls = 0
+        self.unregister_mf_calls = 0
+        self.unregister_mf_ok = True
         self.status_value = None
         self.scheduled_status = {
             "task_name": "AKVirtualCameraHelper",
@@ -35,6 +40,10 @@ class FakeNative:
 
     def register_mf(self, name: str) -> bool:
         return True
+
+    def unregister_mf(self) -> bool:
+        self.unregister_mf_calls += 1
+        return self.unregister_mf_ok
 
     def install_autostart(self, exe_path: str, log_path: str, task_name: str) -> bool:
         self.install_calls.append((exe_path, log_path, task_name))
@@ -56,6 +65,14 @@ class FakeNative:
 
     def start_installed(self, task_name: str) -> bool:
         self.start_installed_calls.append(task_name)
+        return True
+
+    def start_service(self, helper_exe: str = "", task_name: str = "") -> bool:
+        self.start_service_calls.append(helper_exe)
+        return True
+
+    def ensure_running(self, helper_exe: str = "", task_name: str = "", prefer_installed: bool = True) -> bool:
+        self.ensure_running_calls.append((helper_exe, task_name, prefer_installed))
         return True
 
     def scheduled_task_status(self, task_name: str) -> dict:
@@ -88,14 +105,14 @@ class DummyProc:
 
 
 def make_helper(monkeypatch, native: FakeNative) -> HelperService:
-    monkeypatch.setattr("akvc.core.helper.client.NativeWindowsHelperClient", lambda: native)
+    monkeypatch.setattr("apps.desktop.akvc_app.services.helper_service.NativeWindowsHelperClient", lambda: native)
     return HelperService(helper_exe=Path("C:/tmp/akvc_helper.exe"))
 
 
 def test_install_autostart_uses_helper_exe(monkeypatch) -> None:
     native = FakeNative()
     helper = make_helper(monkeypatch, native)
-    monkeypatch.setattr("akvc.core.helper.client.find_helper_exe", lambda explicit=None: Path("C:/tmp/akvc_helper.exe"))
+    monkeypatch.setattr("apps.desktop.akvc_app.services.helper_service.find_helper_exe", lambda explicit=None: Path("C:/tmp/akvc_helper.exe"))
 
     assert helper.install_autostart(log_path=DEFAULT_PERSISTENT_LOG)
     assert native.install_calls == [(
@@ -105,26 +122,22 @@ def test_install_autostart_uses_helper_exe(monkeypatch) -> None:
     )]
 
 
-def test_start_prefers_installed_helper(monkeypatch) -> None:
+def test_start_uses_native_service_orchestration(monkeypatch) -> None:
     native = FakeNative()
-    native.scheduled_status["installed"] = True
-    native.ping_values = [False, False, True]
     helper = make_helper(monkeypatch, native)
+    monkeypatch.setattr("apps.desktop.akvc_app.services.helper_service.find_helper_exe", lambda explicit=None: Path("C:/tmp/akvc_helper.exe"))
 
     assert helper.start()
-    assert native.start_installed_calls == ["AKVirtualCameraHelper"]
-    assert native.launch_calls == []
+    assert native.start_service_calls == [str(Path("C:/tmp/akvc_helper.exe"))]
 
 
-def test_start_falls_back_to_launch_when_not_installed(monkeypatch) -> None:
+def test_ensure_running_uses_native_orchestration(monkeypatch) -> None:
     native = FakeNative()
-    native.ping_values = [False, True]
     helper = make_helper(monkeypatch, native)
-    monkeypatch.setattr("akvc.core.helper.client.find_helper_exe", lambda explicit=None: Path("C:/tmp/akvc_helper.exe"))
+    monkeypatch.setattr("apps.desktop.akvc_app.services.helper_service.find_helper_exe", lambda explicit=None: Path("C:/tmp/akvc_helper.exe"))
 
-    assert helper.start()
-    assert native.start_installed_calls == []
-    assert len(native.launch_calls) == 1
+    assert helper.ensure_running(task_name="TaskA", prefer_installed=False)
+    assert native.ensure_running_calls == [(str(Path("C:/tmp/akvc_helper.exe")), "TaskA", False)]
 
 
 def test_stop_requests_quit_and_waits_for_proc(monkeypatch) -> None:
@@ -136,6 +149,15 @@ def test_stop_requests_quit_and_waits_for_proc(monkeypatch) -> None:
 
     assert native.quit_calls == 1
     assert helper._proc is None
+
+
+def test_unregister_mf_uses_native_orchestration(monkeypatch) -> None:
+    native = FakeNative()
+    helper = make_helper(monkeypatch, native)
+
+    assert helper.unregister_mf()
+    assert native.unregister_mf_calls == 1
+    assert helper.last_error_message is None
 
 
 def test_scheduled_task_status_returns_native_dict(monkeypatch) -> None:

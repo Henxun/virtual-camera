@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import logging
 
-from akvc.core import logging as akvc_logging
+from apps.desktop.akvc_app.services import app_logging as akvc_logging
 
 
 def test_configure_returns_stdlib_logger_and_writes_json_file(tmp_path) -> None:

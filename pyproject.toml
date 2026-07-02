@@ -36,7 +36,7 @@ include-package-data = true
 "" = "."
 
 [tool.setuptools.packages.find]
-where = ["camera-core/src", "apps/cli"]
+where = [".", "apps/cli"]
 include = ["akvc*", "akvc_cli*"]
 
 [tool.setuptools.package-data]

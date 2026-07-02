@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 [build-system]
-requires = ["setuptools>=68", "wheel", "pybind11>=2.12", "numpy>=1.26,<3.0"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -20,8 +20,11 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8.1", "pytest-cov>=4.1"]
 
+[tool.setuptools.package-dir]
+"" = ".."
+
 [tool.setuptools.packages.find]
-where = ["src"]
+where = [".."]
 include = ["akvc*"]
 
 [tool.setuptools.package-data]

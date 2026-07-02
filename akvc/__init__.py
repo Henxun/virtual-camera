@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""AK Virtual Camera — camera core."""
+"""AK Virtual Camera SDK package."""
 
 from .sdk import VirtualCamera
 

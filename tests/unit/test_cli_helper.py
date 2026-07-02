@@ -16,7 +16,9 @@ class FakeHelper:
         self.start_installed_calls: list[str] = []
         self.stop_calls = 0
         self.register_mf_calls: list[str] = []
+        self.unregister_mf_calls = 0
         self.register_mf_ok = True
+        self.unregister_mf_ok = True
         self.runtime_status = {"pid": 1234, "heartbeat_100ns": 99, "producer_seq": 7}
         self.task_status = {
             "task_name": "AKVirtualCameraHelper",
@@ -46,6 +48,10 @@ class FakeHelper:
     def register_mf(self, name: str = "AK Virtual Camera") -> bool:
         self.register_mf_calls.append(name)
         return self.register_mf_ok
+
+    def unregister_mf(self) -> bool:
+        self.unregister_mf_calls += 1
+        return self.unregister_mf_ok
 
     def scheduled_task_status(self, task_name: str = "AKVirtualCameraHelper") -> dict:
         data = dict(self.task_status)
@@ -125,3 +131,65 @@ def test_cmd_helper_stop_requests_helper_shutdown(monkeypatch, capsys) -> None:
     assert rc == 0
     assert helper.stop_calls == 1
     assert "helper stop requested" in capsys.readouterr().out
+
+
+def test_cmd_unregister_removes_mf_then_dshow(monkeypatch, capsys) -> None:
+    helper = FakeHelper()
+    monkeypatch.setattr(cli, "HelperService", lambda helper_exe=None: helper)
+    monkeypatch.setattr(cli, "_find_dll", lambda: cli.Path("C:/tmp/akvc-dshow.dll"))
+    monkeypatch.setattr(cli, "_read_inproc_path", lambda: "C:/tmp/akvc-dshow.dll")
+    monkeypatch.setattr(cli, "_is_admin", lambda: True)
+
+    calls: list[list[str]] = []
+
+    def fake_call(cmd: list[str]) -> int:
+        calls.append(cmd)
+        return 0
+
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+    monkeypatch.setattr(cli.Path, "is_file", lambda self: True)
+
+    rc = cli.cmd_unregister(SimpleNamespace(dll=None))
+
+    assert rc == 0
+    assert helper.ensure_calls == ["AKVirtualCameraHelper"]
+    assert helper.unregister_mf_calls == 1
+    assert calls == [["regsvr32", "/u", "/s", str(cli.Path("C:/tmp/akvc-dshow.dll"))]]
+    out = capsys.readouterr().out
+    assert "MF virtual camera removed or already absent" in out
+    assert "DShow filter unregistered" in out
+
+
+def test_cmd_unregister_treats_absent_dshow_as_success_when_mf_removed(monkeypatch, capsys) -> None:
+    helper = FakeHelper()
+    monkeypatch.setattr(cli, "HelperService", lambda helper_exe=None: helper)
+    monkeypatch.setattr(cli, "_find_dll", lambda: cli.Path("C:/tmp/akvc-dshow.dll"))
+    monkeypatch.setattr(cli, "_read_inproc_path", lambda: None)
+    monkeypatch.setattr(cli, "_is_admin", lambda: True)
+    monkeypatch.setattr(cli.Path, "is_file", lambda self: True)
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(cli.subprocess, "call", lambda cmd: calls.append(cmd) or 0)
+
+    rc = cli.cmd_unregister(SimpleNamespace(dll=None))
+
+    assert rc == 0
+    assert helper.unregister_mf_calls == 1
+    assert calls == []
+    out = capsys.readouterr().out
+    assert "MF virtual camera removed or already absent" in out
+    assert "DShow filter already absent" in out
+
+
+    helper = FakeHelper()
+    helper.unregister_mf_ok = False
+    monkeypatch.setattr(cli, "HelperService", lambda helper_exe=None: helper)
+    monkeypatch.setattr(cli, "_find_dll", lambda: cli.Path("C:/tmp/akvc-dshow.dll"))
+    monkeypatch.setattr(cli, "_is_admin", lambda: True)
+    monkeypatch.setattr(cli.Path, "is_file", lambda self: True)
+    monkeypatch.setattr(cli.subprocess, "call", lambda cmd: 0)
+
+    rc = cli.cmd_unregister(SimpleNamespace(dll=None))
+
+    assert rc == 1
+    assert helper.unregister_mf_calls == 1

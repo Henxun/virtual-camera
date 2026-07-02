@@ -347,7 +347,7 @@ flowchart LR
 |---|---|
 | View / ViewModel / ServiceFacade | `apps/desktop/akvc_app/{views,viewmodels,services}/` |
 | FrameWorker | `apps/desktop/akvc_app/workers/` |
-| Camera Core 各模块 | `camera-core/src/akvc/core/{frame_provider,frame_pipeline,frame_sink,effects,ai,config,telemetry,metrics,errors}/` |
+| Camera Core 各模块 | `akvc/core/{frame_provider,frame_pipeline,frame_sink,effects,ai,config,telemetry,metrics,errors}/` |
 | Platform ABI | `platform-abi/include/akvc/`、`platform-abi/python/akvc/platform/` |
 | 共享协议 | `virtualcam/shared/` |
 | Win DShow | `virtualcam/windows/dshow/` |

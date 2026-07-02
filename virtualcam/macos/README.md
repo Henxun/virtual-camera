@@ -6,7 +6,7 @@
 This directory contains the macOS port of the AK Virtual Camera: a
 CoreMediaIO **Camera Extension** (System Extension) that reads NV12 frames
 from a POSIX shared-memory ring written by the Python producer
-(`camera-core/src/akvc/core/frame_sink/macos_shm.py`).
+(`akvc/core/frame_sink/macos_shm.py`).
 
 ## Layout
 

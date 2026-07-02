@@ -54,6 +54,7 @@ endif()
 # ---- Subprojects (Windows only in Phase 2) ----
 if(WIN32)
     add_subdirectory(virtualcam/windows/framebus)
+    add_subdirectory(camera-core/native)
     add_subdirectory(virtualcam/windows/dshow)
     add_subdirectory(virtualcam/windows/helper)
     add_subdirectory(virtualcam/windows/mf)
