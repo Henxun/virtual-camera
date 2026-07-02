@@ -6,16 +6,19 @@ Run:  uv run python tools/diag/dshow_enum.py
 Checks:
   1. DShow filter CLSID is registered (InprocServer32 path)
   2. Filter Mapper category entry exists (so consumers can enumerate it)
-  3. Frame Bus shared memory exists and has fresh frames
+  3. Frame Bus backing file exists and has fresh frames
 """
 
 from __future__ import annotations
 
 import ctypes
+import os
 import struct
 import sys
 from ctypes import POINTER, byref, c_int, c_uint8, c_uint32, c_void_p, c_wchar_p
 from pathlib import Path
+
+from akvc._core_native import NativeFrameBusProtocol
 
 
 ole32 = ctypes.OleDLL("ole32")
@@ -45,7 +48,11 @@ def _failed(hr: int) -> bool:
 
 
 CLSID = "{8E14549A-DB61-4309-AFA1-3578E927E933}"
-SHM_NAME = r"Global\akvc-frames-v1"
+FRAMEBUS_PATH_ENV = str(NativeFrameBusProtocol["FRAMEBUS_PATH_ENV"])
+FRAMEBUS_DIR_ENV = str(NativeFrameBusProtocol["FRAMEBUS_DIR_ENV"])
+FRAMEBUS_DEFAULT_SUBDIR = str(NativeFrameBusProtocol["FRAMEBUS_DEFAULT_SUBDIR"])
+FRAMEBUS_DEFAULT_FILE = str(NativeFrameBusProtocol["FRAMEBUS_DEFAULT_FILE"])
+FRAMEBUS_DEFAULT_PATH = Path(str(NativeFrameBusProtocol["FRAMEBUS_DEFAULT_PATH"]))
 CLSID_SystemDeviceEnum = guid("{62BE5D10-60EB-11D0-BD3B-00A0C911CE86}")
 CLSID_VideoInputDeviceCategory = guid("{860BB310-5D01-11D0-BD3B-00A0C911CE86}")
 IID_ICreateDevEnum = guid("{29840822-5B84-11D0-BD3B-00A0C911CE86}")
@@ -230,33 +237,30 @@ def check_framebus() -> bool:
         print("  [SKIP] not Windows")
         return False
 
-    k = ctypes.WinDLL("kernel32", use_last_error=True)
-    k.OpenFileMappingW.restype = c_void_p
-    k.OpenFileMappingW.argtypes = [c_uint32, c_int, c_wchar_p]
-    k.MapViewOfFile.restype = c_void_p
-    k.MapViewOfFile.argtypes = [c_void_p, c_uint32, c_uint32, c_uint32, ctypes.c_size_t]
+    if env_path := os.environ.get(FRAMEBUS_PATH_ENV):
+        path = Path(env_path)
+    else:
+        path = FRAMEBUS_DEFAULT_PATH
 
-    h = k.OpenFileMappingW(0x0004, 0, SHM_NAME)  # FILE_MAP_READ
-    err = ctypes.get_last_error()
-    if not h:
-        print(f"  [FAIL] cannot open SHM '{SHM_NAME}' (err={err})")
-        if err == 2:
-            print("         SHM not found — start the app and click Start first")
-        elif err == 5:
-            print("         access denied — permission/ACL issue")
+    print(f"  backing file: {path}")
+    if not path.exists():
+        print("  [FAIL] backing file not found — start the app and click Start first")
         return False
 
-    base = k.MapViewOfFile(h, 0x0004, 0, 0, 0)
-    if not base:
-        print("  [FAIL] MapViewOfFile failed")
+    size = path.stat().st_size
+    print(f"  file size:    {size}")
+    if size < int(NativeFrameBusProtocol["REGION_SIZE"]):
+        print("  [FAIL] backing file is smaller than the frame bus region")
         return False
 
-    ctrl = ctypes.cast(base, POINTER(c_uint8))
-    magic = struct.unpack_from("<I", bytes(ctrl[0:4]))[0]
-    schema = struct.unpack_from("<I", bytes(ctrl[4:8]))[0]
-    seq = struct.unpack_from("<Q", bytes(ctrl[16:24]))[0]
-    writer_pid = struct.unpack_from("<I", bytes(ctrl[24:28]))[0]
-    hb = struct.unpack_from("<Q", bytes(ctrl[40:48]))[0]
+    with path.open("rb") as f:
+        region = f.read(int(NativeFrameBusProtocol["REGION_SIZE"]))
+
+    magic = struct.unpack_from("<I", region, 0)[0]
+    schema = struct.unpack_from("<I", region, 4)[0]
+    seq = struct.unpack_from("<Q", region, 16)[0]
+    writer_pid = struct.unpack_from("<I", region, 24)[0]
+    hb = struct.unpack_from("<Q", region, 40)[0]
 
     print(f"  magic:        0x{magic:08X} ({'OK' if magic == 0x43564B41 else 'BAD'})")
     print(f"  schema:       {schema}")
@@ -268,11 +272,10 @@ def check_framebus() -> bool:
         print("  [WARN] no frames published yet — worker not running?")
         return False
 
-    # Read latest frame
-    slot_count = struct.unpack_from("<I", bytes(ctrl[8:12]))[0]
-    slot_size = struct.unpack_from("<I", bytes(ctrl[12:16]))[0]
+    slot_count = struct.unpack_from("<I", region, 8)[0]
+    slot_size = struct.unpack_from("<I", region, 12)[0]
     slot_off = 128 + ((seq - 1) % slot_count) * slot_size
-    hdr = bytes(ctrl[slot_off:slot_off + 80])
+    hdr = region[slot_off:slot_off + 80]
     fc = struct.unpack_from("<I", hdr, 8)[0]
     w, hh = struct.unpack_from("<II", hdr, 12)
     sh, st = struct.unpack_from("<QQ", hdr, 56)

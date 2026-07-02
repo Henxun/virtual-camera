@@ -33,6 +33,8 @@
 
 namespace akvc {
 
+std::wstring default_framebus_file_path();
+
 struct FrameView {
     const akvc_frame_header_t* header = nullptr;
     const uint8_t*             plane0 = nullptr;
@@ -59,6 +61,7 @@ protected:
     HANDLE   mapping_ = nullptr;
     HANDLE   event_   = nullptr;
     HANDLE   mutex_   = nullptr;
+    HANDLE   file_    = nullptr;
     uint8_t* base_    = nullptr;   // pointer to mapped region
     uint32_t region_size_ = 0;
     FrameBusErrorInfo last_error_{};

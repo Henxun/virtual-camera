@@ -4,12 +4,14 @@
 #include "akvc/framebus.h"
 
 #include <sddl.h>
+#include <shlobj.h>
 #include <windows.h>
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
 
 namespace akvc {
 
@@ -52,21 +54,120 @@ uint64_t now_pts_100ns() noexcept {
     return u.QuadPart;
 }
 
+std::wstring framebus_path_from_env(const wchar_t* name) {
+    if (name == nullptr || *name == L'\0') {
+        return {};
+    }
+    const DWORD needed = ::GetEnvironmentVariableW(name, nullptr, 0);
+    if (needed == 0) {
+        return {};
+    }
+    std::wstring value(needed - 1, L'\0');
+    if (::GetEnvironmentVariableW(name, value.data(), needed) == 0) {
+        return {};
+    }
+    return value;
+}
+
+std::wstring framebus_base_dir() {
+    if (auto explicit_path = framebus_path_from_env(L"AKVC_FRAMEBUS_DIR"); !explicit_path.empty()) {
+        return explicit_path;
+    }
+
+    wchar_t path[MAX_PATH] = {};
+    if (SUCCEEDED(::SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, path))) {
+        return (std::filesystem::path(path) / L"AKVirtualCamera").wstring();
+    }
+
+    if (const DWORD needed = ::GetTempPathW(MAX_PATH, path); needed != 0 && needed < MAX_PATH) {
+        return (std::filesystem::path(path) / L"AKVirtualCamera").wstring();
+    }
+    return L".";
+}
+
+std::wstring framebus_file_path() {
+    if (auto explicit_path = framebus_path_from_env(L"AKVC_FRAMEBUS_PATH"); !explicit_path.empty()) {
+        return explicit_path;
+    }
+    return (std::filesystem::path(framebus_base_dir()) / L"akvc-frames-v1.bin").wstring();
+}
+
+bool ensure_parent_dir(const std::wstring& path) {
+    try {
+        const auto parent = std::filesystem::path(path).parent_path();
+        if (parent.empty()) {
+            return true;
+        }
+        std::filesystem::create_directories(parent);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+HANDLE open_backing_file(bool create_or_reset, std::wstring& path_out, DWORD& error_out) {
+    path_out = framebus_file_path();
+    error_out = ERROR_SUCCESS;
+    if (!ensure_parent_dir(path_out)) {
+        error_out = ERROR_PATH_NOT_FOUND;
+        return nullptr;
+    }
+
+    const DWORD disposition = create_or_reset ? CREATE_ALWAYS : OPEN_EXISTING;
+    HANDLE file = ::CreateFileW(
+        path_out.c_str(),
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr,
+        disposition,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        error_out = ::GetLastError();
+        return nullptr;
+    }
+    return file;
+}
+
+bool ensure_file_size(HANDLE file, uint32_t size, DWORD& error_out) {
+    LARGE_INTEGER target{};
+    target.QuadPart = static_cast<LONGLONG>(size);
+    if (!::SetFilePointerEx(file, target, nullptr, FILE_BEGIN)) {
+        error_out = ::GetLastError();
+        return false;
+    }
+    if (!::SetEndOfFile(file)) {
+        error_out = ::GetLastError();
+        return false;
+    }
+    if (!::SetFilePointerEx(file, LARGE_INTEGER{}, nullptr, FILE_BEGIN)) {
+        error_out = ::GetLastError();
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 akvc_status_t translate_win32(DWORD le) {
     switch (le) {
         case ERROR_SUCCESS:        return AKVC_OK;
         case ERROR_FILE_NOT_FOUND: return E_AKVC_FRAMEBUS_OPEN_FAILED;
+        case ERROR_PATH_NOT_FOUND: return E_AKVC_FRAMEBUS_OPEN_FAILED;
         case ERROR_ACCESS_DENIED:  return E_AKVC_FRAMEBUS_OPEN_FAILED;
         case WAIT_TIMEOUT:         return E_AKVC_FRAMEBUS_TIMEOUT;
         default:                   return E_AKVC_FRAMEBUS_OPEN_FAILED;
     }
 }
 
+std::wstring default_framebus_file_path() {
+    return framebus_file_path();
+}
+
 FrameBusBase::~FrameBusBase() {
     if (base_)    { ::UnmapViewOfFile(base_); base_    = nullptr; }
     if (mapping_) { ::CloseHandle(mapping_);  mapping_ = nullptr; }
+    if (file_)    { ::CloseHandle(file_);     file_ = nullptr; }
     if (event_)   { ::CloseHandle(event_);    event_   = nullptr; }
     if (mutex_)   { ::CloseHandle(mutex_);    mutex_   = nullptr; }
 }
@@ -79,16 +180,25 @@ akvc_status_t FrameBusProducer::open_existing() {
     last_error_ = {};
     region_size_ = AKVC_DEFAULT_REGION_SIZE;
 
-    mapping_ = ::OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, FALSE, kFrameBusMappingName);
+    std::wstring file_path;
+    DWORD file_error = ERROR_SUCCESS;
+    file_ = open_backing_file(false, file_path, file_error);
+    if (!file_) {
+        set_last_error(file_error, "CreateFileW", file_path.empty() ? nullptr : file_path.c_str());
+        return translate_win32(file_error);
+    }
+
+    mapping_ = ::CreateFileMappingW(file_, nullptr, PAGE_READWRITE, 0, 0, nullptr);
     if (!mapping_) {
-        set_last_error(::GetLastError(), "OpenFileMappingW", kFrameBusMappingName);
+        set_last_error(::GetLastError(), "CreateFileMappingW", file_path.c_str());
+        close();
         return translate_win32(::GetLastError());
     }
 
     base_ = reinterpret_cast<uint8_t*>(
         ::MapViewOfFile(mapping_, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, region_size_));
     if (!base_) {
-        set_last_error(::GetLastError(), "MapViewOfFile", kFrameBusMappingName);
+        set_last_error(::GetLastError(), "MapViewOfFile", file_path.c_str());
         close();
         return translate_win32(::GetLastError());
     }
@@ -136,23 +246,35 @@ akvc_status_t FrameBusProducer::create() {
 
     region_size_ = AKVC_DEFAULT_REGION_SIZE;
 
-    // CreateFileMapping returns existing handle if name exists; we tolerate that.
+    std::wstring file_path;
+    DWORD file_error = ERROR_SUCCESS;
+    file_ = open_backing_file(true, file_path, file_error);
+    if (!file_) {
+        set_last_error(file_error, "CreateFileW", file_path.empty() ? nullptr : file_path.c_str());
+        return translate_win32(file_error);
+    }
+    if (!ensure_file_size(file_, region_size_, file_error)) {
+        set_last_error(file_error, "SetEndOfFile", file_path.c_str());
+        close();
+        return translate_win32(file_error);
+    }
+
     mapping_ = ::CreateFileMappingW(
-        INVALID_HANDLE_VALUE,
+        file_,
         &sd.sa,
         PAGE_READWRITE,
         0,
         region_size_,
-        kFrameBusMappingName);
+        nullptr);
     if (!mapping_) {
-        set_last_error(::GetLastError(), "CreateFileMappingW", kFrameBusMappingName);
+        set_last_error(::GetLastError(), "CreateFileMappingW", file_path.c_str());
         return translate_win32(::GetLastError());
     }
 
     base_ = reinterpret_cast<uint8_t*>(
         ::MapViewOfFile(mapping_, FILE_MAP_ALL_ACCESS, 0, 0, region_size_));
     if (!base_) {
-        set_last_error(::GetLastError(), "MapViewOfFile", kFrameBusMappingName);
+        set_last_error(::GetLastError(), "MapViewOfFile", file_path.c_str());
         return translate_win32(::GetLastError());
     }
 
@@ -280,6 +402,7 @@ akvc_status_t FrameBusProducer::publish_placeholder(uint32_t width,
 void FrameBusProducer::close() {
     if (base_)    { ::UnmapViewOfFile(base_); base_ = nullptr; }
     if (mapping_) { ::CloseHandle(mapping_);  mapping_ = nullptr; }
+    if (file_)    { ::CloseHandle(file_);     file_ = nullptr; }
     if (event_)   { ::CloseHandle(event_);    event_ = nullptr; }
     if (mutex_)   { ::CloseHandle(mutex_);    mutex_ = nullptr; }
     region_size_ = 0;
@@ -290,10 +413,13 @@ void FrameBusProducer::close() {
 akvc_status_t FrameBusConsumer::open() {
     if (is_open()) return AKVC_OK;
 
-    mapping_ = ::OpenFileMappingW(FILE_MAP_READ, FALSE, L"Global\\akvc-frames-v1");
-    if (!mapping_) {
-        DWORD le = ::GetLastError();
-        // Diagnostic: log why the frame server can't open the SHM.
+    std::wstring file_path;
+    DWORD file_error = ERROR_SUCCESS;
+    file_ = open_backing_file(false, file_path, file_error);
+    if (!file_) {
+        DWORD le = file_error;
+        set_last_error(le, "CreateFileW", file_path.empty() ? nullptr : file_path.c_str());
+        // Diagnostic: log why the frame server can't open the backing file.
         wchar_t path[MAX_PATH] = {0};
         HMODULE m = ::GetModuleHandleW(L"akvc-mf");
         if (!m) m = ::GetModuleHandleW(nullptr);
@@ -305,11 +431,19 @@ akvc_status_t FrameBusConsumer::open() {
                 DWORD pid = ::GetCurrentProcessId();
                 DWORD sid = 0;
                 ::ProcessIdToSessionId(pid, &sid);
-                fprintf(f, "[FrameBusConsumer::open] OpenFileMappingW FAILED le=%lu pid=%lu session=%lu name=Global\\akvc-frames-v1\n",
-                        le, pid, sid);
+                fprintf(f, "[FrameBusConsumer::open] CreateFileW FAILED le=%lu pid=%lu session=%lu path=%ls\n",
+                        le, pid, sid, file_path.c_str());
                 fclose(f);
             }
         }
+        return translate_win32(le);
+    }
+
+    mapping_ = ::CreateFileMappingW(file_, nullptr, PAGE_READWRITE, 0, 0, nullptr);
+    if (!mapping_) {
+        DWORD le = ::GetLastError();
+        set_last_error(le, "CreateFileMappingW", file_path.c_str());
+        close();
         return translate_win32(le);
     }
 
@@ -473,6 +607,7 @@ akvc_status_t FrameBusConsumer::wait_frame(uint32_t timeout_ms, FrameView& out) 
 void FrameBusConsumer::close() {
     if (base_)    { ::UnmapViewOfFile(base_); base_ = nullptr; }
     if (mapping_) { ::CloseHandle(mapping_);  mapping_ = nullptr; }
+    if (file_)    { ::CloseHandle(file_);     file_ = nullptr; }
     if (event_)   { ::CloseHandle(event_);    event_ = nullptr; }
     region_size_ = 0;
 }
