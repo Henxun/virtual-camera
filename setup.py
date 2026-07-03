@@ -38,6 +38,19 @@ def _stage_windows_runtime() -> Path | None:
     return RUNTIME_BIN
 
 
+def _copy_native_extension(target_dir: Path) -> None:
+    staged_native = RUNTIME_STAGE / "akvc"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    copied = False
+    for artifact in staged_native.glob("_core_native*.pyd"):
+        shutil.copy2(artifact, target_dir / artifact.name)
+        if artifact.name != "_core_native.pyd":
+            shutil.copy2(artifact, target_dir / "_core_native.pyd")
+        copied = True
+    if not copied:
+        raise RuntimeError("missing staged native extension: _core_native*.pyd")
+
+
 class build_py(_build_py):
     def run(self) -> None:
         super().run()
@@ -50,6 +63,7 @@ class build_py(_build_py):
         target_dir.mkdir(parents=True, exist_ok=True)
         for name in RUNTIME_FILES:
             shutil.copy2(runtime_bin / name, target_dir / name)
+        _copy_native_extension(Path(self.build_lib) / "akvc")
 
 
 if _editable_wheel is not None:
@@ -57,6 +71,7 @@ if _editable_wheel is not None:
     class editable_wheel(_editable_wheel):
         def run(self) -> None:
             _stage_windows_runtime()
+            _copy_native_extension(ROOT / "akvc")
             super().run()
 
     CMDCLASS = {

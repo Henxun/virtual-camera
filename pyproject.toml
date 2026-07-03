@@ -8,7 +8,7 @@ name = "amaran-virtual-camera"
 version = "0.2.0"
 description = "AK Virtual Camera SDK + Windows runtime"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11,<3.15"
 license = { text = "Apache-2.0" }
 authors = [{ name = "AK Virtual Camera Authors" }]
 dependencies = [
@@ -42,13 +42,14 @@ include = ["akvc*", "akvc_cli*"]
 [tool.setuptools.package-data]
 "akvc.core" = ["py.typed"]
 "akvc" = [
+    "_core_native*.pyd",
     "_runtime/windows/akvc_helper.exe",
     "_runtime/windows/akvc-mf.dll",
     "_runtime/windows/akvc-dshow.dll",
 ]
 
 [tool.setuptools.exclude-package-data]
-"*" = ["__pycache__/*", "*.pyc", "*.pyo", "*.pyd"]
+"*" = ["__pycache__/*", "*.pyc", "*.pyo"]
 
 [tool.uv]
 package = false

@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from apps.desktop.akvc_app.services import windows_runtime as runtime
-from apps.desktop.akvc_app.services.windows_runtime import find_dshow_dll, find_helper_exe, find_mf_dll
+from akvc import windows_runtime as runtime
+from akvc.windows_runtime import find_dshow_dll, find_helper_exe, find_mf_dll
 
 
 def test_explicit_runtime_paths_win_over_other_sources(tmp_path) -> None:

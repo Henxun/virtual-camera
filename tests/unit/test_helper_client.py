@@ -15,7 +15,7 @@ class FakeNative:
         self.last_error_message = ""
         self.install_calls: list[tuple[str, str, str]] = []
         self.uninstall_calls: list[str] = []
-        self.start_installed_calls: list[str] = []
+        self.start_installed_calls: list[tuple[str, float]] = []
         self.launch_calls: list[tuple[str, int, str]] = []
         self.start_service_calls: list[str] = []
         self.ensure_running_calls: list[tuple[str, str, bool]] = []
@@ -29,6 +29,7 @@ class FakeNative:
             "pipe_reachable": False,
         }
         self.elevated = False
+        self.start_installed_ok = True
 
     def ping(self) -> bool:
         if len(self.ping_values) > 1:
@@ -63,9 +64,9 @@ class FakeNative:
         }
         return True
 
-    def start_installed(self, task_name: str) -> bool:
-        self.start_installed_calls.append(task_name)
-        return True
+    def start_installed(self, task_name: str, timeout_s: float = 8.0) -> bool:
+        self.start_installed_calls.append((task_name, timeout_s))
+        return self.start_installed_ok
 
     def start_service(self, helper_exe: str = "", task_name: str = "") -> bool:
         self.start_service_calls.append(helper_exe)
@@ -131,13 +132,24 @@ def test_start_uses_native_service_orchestration(monkeypatch) -> None:
     assert native.start_service_calls == [str(Path("C:/tmp/akvc_helper.exe"))]
 
 
-def test_ensure_running_uses_native_orchestration(monkeypatch) -> None:
+def test_start_installed_passes_timeout_through_to_native(monkeypatch) -> None:
     native = FakeNative()
     helper = make_helper(monkeypatch, native)
-    monkeypatch.setattr("apps.desktop.akvc_app.services.helper_service.find_helper_exe", lambda explicit=None: Path("C:/tmp/akvc_helper.exe"))
 
-    assert helper.ensure_running(task_name="TaskA", prefer_installed=False)
-    assert native.ensure_running_calls == [(str(Path("C:/tmp/akvc_helper.exe")), "TaskA", False)]
+    assert helper.start_installed(task_name="TaskA", timeout_s=1.5)
+    assert native.start_installed_calls == [("TaskA", 1.5)]
+    assert helper.last_error_message is None
+
+
+def test_start_installed_uses_native_error_message_on_timeout(monkeypatch) -> None:
+    native = FakeNative()
+    native.start_installed_ok = False
+    native.last_error_message = "Installed AKVC helper task TaskA started but did not expose pipe in time."
+    helper = make_helper(monkeypatch, native)
+
+    assert not helper.start_installed(task_name="TaskA", timeout_s=1.5)
+    assert native.start_installed_calls == [("TaskA", 1.5)]
+    assert helper.last_error_message == "Installed AKVC helper task TaskA started but did not expose pipe in time."
 
 
 def test_stop_requests_quit_and_waits_for_proc(monkeypatch) -> None:

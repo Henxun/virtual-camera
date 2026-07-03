@@ -10,12 +10,12 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from akvc_app.services.helper_service import (
+from akvc.helper_service import (
     DEFAULT_PERSISTENT_LOG,
     DEFAULT_TASK_NAME,
     HelperService,
 )
-from akvc_app.services.windows_runtime import find_dshow_dll
+from akvc.runtime import find_dshow_dll
 
 CLSID = "{8E14549A-DB61-4309-AFA1-3578E927E933}"
 FRIENDLY_NAME = "AK Virtual Camera"

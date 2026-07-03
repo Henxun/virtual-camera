@@ -4,7 +4,7 @@ Cross-platform virtual camera for video conferencing, livestreaming, and AI effe
 
 - **Windows**: DirectShow Source Filter (Phase 2) + Media Foundation Virtual Camera (Phase 3)
 - **macOS**: CoreMediaIO Camera Extension (Phase 4)
-- **Desktop**: Python 3.11–3.12 + PySide6, MVVM
+- **Desktop**: Python 3.11–3.14 + PySide6, MVVM
 
 > Phase 2 (this snapshot) ships the Windows DirectShow MVP.
 > The device appears in OBS Studio, Zoom, Chrome `getUserMedia`, WeChat, QQ, Discord, etc.

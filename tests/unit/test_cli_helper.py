@@ -38,7 +38,7 @@ class FakeHelper:
         self.ensure_calls.append(task_name)
         return True
 
-    def start_installed(self, task_name: str) -> bool:
+    def start_installed(self, task_name: str, timeout_s: float = 8.0) -> bool:
         self.start_installed_calls.append(task_name)
         return True
 
@@ -60,6 +60,11 @@ class FakeHelper:
 
     def status(self):
         return dict(self.runtime_status)
+
+
+def test_cli_imports_helper_and_runtime_from_akvc() -> None:
+    assert cli.HelperService.__module__ == "akvc.helper_service"
+    assert cli.find_dshow_dll.__module__ == "akvc.windows_runtime"
 
 
 def test_cmd_helper_install_uses_helper(monkeypatch, capsys) -> None:
@@ -94,7 +99,6 @@ def test_cmd_helper_start_can_force_installed_task(monkeypatch) -> None:
     assert rc == 0
     assert helper.start_installed_calls == ["TaskA"]
     assert helper.ensure_calls == []
-
 
 
 
