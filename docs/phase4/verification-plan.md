@@ -7,7 +7,7 @@
 
 | # | 验收项 | 检查方式 | 通过判据 |
 |---|---|---|---|
-| VC-M-1 | Camera Extension 安装成功 | 运行 host app → 系统设置授权 → `systemextensionsctl list` | 列表含 `com.akvc.camera-extension` 状态 `[activated waiting]` 或 `[activated enabled]`；`log stream` 见 `akvc.ext.provider.start` |
+| VC-M-1 | Camera Extension 安装成功 | 运行 container app（或 legacy host target）→ 系统设置授权 → `systemextensionsctl list` | 列表含 `com.akvc.camera-extension` 状态 `[activated waiting]` 或 `[activated enabled]`；`log stream` 见 `akvc.ext.provider.start` |
 | VC-M-2 | FaceTime 能发现设备 | FaceTime → Video → Camera | 下拉含 `AK Virtual Camera`；选中后预览正常 |
 | VC-M-3 | Zoom（macOS）能发现并打开 | Zoom → Settings → Video → Camera | 下拉含 `AK Virtual Camera`；预览正常 |
 | VC-M-4 | Safari getUserMedia 能发现并打开 | https://webrtc.github.io/samples/src/content/devices/input-output/ | Video source 下拉含 `AK Virtual Camera`；选择后预览正常 |

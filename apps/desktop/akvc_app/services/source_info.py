@@ -7,13 +7,50 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from akvc._core_native import (
-    describe_source_id as _describe_source_id,
-    list_pattern_ids as _list_pattern_ids,
-    list_test_pattern_sources as _list_test_pattern_sources,
-    list_usb_sources as _list_usb_sources,
-    parse_source_id,
-)
+try:
+    from akvc._core_native import (
+        describe_source_id as _describe_source_id,
+        list_pattern_ids as _list_pattern_ids,
+        list_test_pattern_sources as _list_test_pattern_sources,
+        list_usb_sources as _list_usb_sources,
+        parse_source_id,
+    )
+except ModuleNotFoundError:  # pragma: no cover - import-contract fallback
+    def _list_pattern_ids() -> list[str]:
+        return ["colorbar", "gradient", "checkerboard", "noise", "solid", "moving_box"]
+
+    def _describe_source_id(source_id: str, width: int = 1280, height: int = 720, fps: int = 30):
+        return type(
+            "NativeSourceInfo",
+            (),
+            {
+                "id": source_id,
+                "name": source_id.split(":", 1)[-1].replace("_", " ").title(),
+                "formats": [
+                    type(
+                        "NativeFormatSpec",
+                        (),
+                        {
+                            "fourcc": 0,
+                            "width": width,
+                            "height": height,
+                            "fps_num": fps,
+                            "fps_den": 1,
+                        },
+                    )()
+                ],
+            },
+        )()
+
+    def _list_test_pattern_sources(width: int, height: int, fps: int):
+        return [_describe_source_id(f"test:{pattern_id}", width, height, fps) for pattern_id in _list_pattern_ids()]
+
+    def _list_usb_sources(max_probe: int, width: int, height: int, fps: int):
+        del max_probe, width, height, fps
+        return []
+
+    def parse_source_id(source_id: str):
+        return source_id
 
 DEFAULT_PROVIDER_WIDTH = 1280
 DEFAULT_PROVIDER_HEIGHT = 720

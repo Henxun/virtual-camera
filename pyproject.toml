@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "amaran-virtual-camera"
 version = "0.2.0"
-description = "AK Virtual Camera SDK + Windows runtime"
+description = "AK Virtual Camera SDK + cross-platform runtime assets"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = { text = "Apache-2.0" }
@@ -20,10 +20,10 @@ dependencies = [
 [project.optional-dependencies]
 cli = []
 desktop = [
-    "PySide6>=6.6,<6.9",
+    "PySide6>=6.6,<7",
 ]
 all = [
-    "PySide6>=6.6,<6.9",
+    "PySide6>=6.6,<7",
 ]
 
 [project.scripts]
@@ -45,6 +45,14 @@ include = ["akvc*", "akvc_cli*"]
     "_runtime/windows/akvc_helper.exe",
     "_runtime/windows/akvc-mf.dll",
     "_runtime/windows/akvc-dshow.dll",
+    "_runtime/macos/README.md",
+    "_runtime/macos/akvc-macos-status",
+    "_runtime/macos/akvc-macos-install",
+    "_runtime/macos/akvc-macos-uninstall",
+    "_runtime/macos/akvc-macos-list-devices",
+    "_runtime/macos/akvc-macos-sync-ipc",
+    "_runtime/macos/libakvc-macos-direct-sender.dylib",
+    "_runtime/macos/VirtualCamera.pkg",
 ]
 
 [tool.setuptools.exclude-package-data]

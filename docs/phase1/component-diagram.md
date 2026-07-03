@@ -210,7 +210,7 @@ flowchart TB
 - 系统扩展位置：`AKVC.app/Contents/Library/SystemExtensions/com.akvc.cameraextension.systemextension`。
 - entitlements：
   - 容器 App：`com.apple.security.app-sandbox`、`com.apple.developer.system-extension.install`、`com.apple.security.application-groups = ["group.com.akvc.shared"]`。
-  - Camera Extension：`com.apple.security.application-groups = ["group.com.akvc.shared"]`、`Hardened Runtime`。
+  - Camera Extension：`com.apple.security.app-sandbox`、`com.apple.security.application-groups = ["group.com.akvc.shared"]`、`Hardened Runtime`。
 - 日志：`~/Library/Logs/AKVC/`（用户域）+ `os_log subsystem com.akvc`（Helper / Extension）。
 
 ---

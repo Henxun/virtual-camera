@@ -40,6 +40,7 @@ class MainViewModel(QObject):
     busy_changed = Signal(bool)
     state_text_changed = Signal(str)
     metrics_changed = Signal(dict)
+    install_status_changed = Signal(dict)
     preview_changed = Signal(object)      # QPixmap
     error = Signal(str)
 
@@ -60,6 +61,67 @@ class MainViewModel(QObject):
         # refresh_sources() after it wires signal connections.
 
     # ---------- commands ----------
+
+    def _emit_install_status(self, st) -> None:
+        self.install_status_changed.emit(
+            {
+                "state": st.install_state,
+                "phase": st.install_phase,
+                "devices": list(st.install_devices),
+                "all_devices": list(st.install_all_devices),
+                "device_prefix": st.install_device_prefix,
+                "approval_required": st.approval_required,
+                "enabled": st.install_enabled,
+                "supported_formats": list(st.supported_formats),
+                "supported_frame_rates": list(st.supported_frame_rates),
+                "runtime_topology_kind": st.runtime_topology_kind,
+                "runtime_frame_path": st.runtime_frame_path,
+                "runtime_host_role": st.runtime_host_role,
+                "runtime_host_in_frame_hot_path": st.runtime_host_in_frame_hot_path,
+                "runtime_dedicated_host_daemon_required": st.runtime_dedicated_host_daemon_required,
+                "runtime_container_app_configured": st.runtime_container_app_configured,
+                "runtime_data_plane": st.runtime_data_plane,
+                "runtime_control_plane": st.runtime_control_plane,
+                "ipc_transport": st.ipc_transport,
+                "ipc_probe_present": st.ipc_probe_present,
+                "ipc_ready": st.ipc_ready,
+                "ipc_environment_blocked": st.ipc_environment_blocked,
+                "ipc_last_error": st.ipc_last_error,
+                "ipc_probe_path": st.ipc_probe_path,
+                "ipc_direct_open_errno": st.ipc_direct_open_errno,
+                "install_blocker_code": st.install_blocker_code,
+                "message": st.install_message,
+                "steps": list(st.install_steps),
+                "verification_targets": list(st.verification_targets),
+                "manual_app_validation_present": bool(getattr(st, "manual_app_validation_present", False)),
+                "manual_app_validation_ready": getattr(st, "manual_app_validation_ready", None),
+                "manual_app_validation_failed_criteria": list(
+                    getattr(st, "manual_app_validation_failed_criteria", [])
+                ),
+                "manual_app_validation_failed_labels": list(
+                    getattr(st, "manual_app_validation_failed_labels", [])
+                ),
+                "manual_app_validation_unknown_criteria": list(
+                    getattr(st, "manual_app_validation_unknown_criteria", [])
+                ),
+                "manual_app_validation_unknown_labels": list(
+                    getattr(st, "manual_app_validation_unknown_labels", [])
+                ),
+                "manual_app_validation_blockers": list(
+                    getattr(st, "manual_app_validation_blockers", [])
+                ),
+                "manual_app_validation_blocker_labels": list(
+                    getattr(st, "manual_app_validation_blocker_labels", [])
+                ),
+                "manual_app_validation_manifest_path": str(
+                    getattr(st, "manual_app_validation_manifest_path", "") or ""
+                ),
+                "can_open_settings": st.can_open_settings,
+                "stream_start_ready": st.stream_start_ready,
+                "stream_start_message": st.stream_start_message,
+                "last_error": st.last_error or "",
+            }
+        )
 
     @Slot()
     def refresh_sources(self) -> None:
@@ -134,6 +196,35 @@ class MainViewModel(QObject):
         self._poll_timer.start()
         self._poll_status()
 
+    @Slot()
+    def install_virtual_camera(self) -> None:
+        try:
+            st = self._facade.install_virtual_camera()
+            self._emit_install_status(st)
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+    @Slot()
+    def open_install_settings(self) -> None:
+        try:
+            if not self._facade.open_install_settings():
+                st = self._facade.poll_status()
+                if st.last_error:
+                    self.error.emit(st.last_error)
+                    return
+            st = self._facade.poll_status()
+            self._emit_install_status(st)
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+    @Slot()
+    def recheck_install_status(self) -> None:
+        try:
+            st = self._facade.recheck_install_status()
+            self._emit_install_status(st)
+        except Exception as exc:
+            self.error.emit(str(exc))
+
     # ---------- polling ----------
 
     def _set_running(self, running: bool) -> None:
@@ -166,8 +257,63 @@ class MainViewModel(QObject):
                 "consumers": st.consumer_count,
                 "running": st.running,
                 "last_error": st.last_error or "",
+                "install_state": st.install_state,
+                "install_phase": st.install_phase,
+                "install_devices": list(st.install_devices),
+                "install_all_devices": list(st.install_all_devices),
+                "install_device_prefix": st.install_device_prefix,
+                "approval_required": st.approval_required,
+                "install_enabled": st.install_enabled,
+                "supported_formats": list(st.supported_formats),
+                "supported_frame_rates": list(st.supported_frame_rates),
+                "runtime_topology_kind": st.runtime_topology_kind,
+                "runtime_frame_path": st.runtime_frame_path,
+                "runtime_host_role": st.runtime_host_role,
+                "runtime_host_in_frame_hot_path": st.runtime_host_in_frame_hot_path,
+                "runtime_dedicated_host_daemon_required": st.runtime_dedicated_host_daemon_required,
+                "runtime_container_app_configured": st.runtime_container_app_configured,
+                "runtime_data_plane": st.runtime_data_plane,
+                "runtime_control_plane": st.runtime_control_plane,
+                "ipc_transport": st.ipc_transport,
+                "ipc_probe_present": st.ipc_probe_present,
+                "ipc_ready": st.ipc_ready,
+                "ipc_environment_blocked": st.ipc_environment_blocked,
+                "ipc_last_error": st.ipc_last_error,
+                "ipc_probe_path": st.ipc_probe_path,
+                "ipc_direct_open_errno": st.ipc_direct_open_errno,
+                "install_blocker_code": st.install_blocker_code,
+                "install_message": st.install_message,
+                "install_steps": list(st.install_steps),
+                "verification_targets": list(st.verification_targets),
+                "manual_app_validation_present": bool(getattr(st, "manual_app_validation_present", False)),
+                "manual_app_validation_ready": getattr(st, "manual_app_validation_ready", None),
+                "manual_app_validation_failed_criteria": list(
+                    getattr(st, "manual_app_validation_failed_criteria", [])
+                ),
+                "manual_app_validation_failed_labels": list(
+                    getattr(st, "manual_app_validation_failed_labels", [])
+                ),
+                "manual_app_validation_unknown_criteria": list(
+                    getattr(st, "manual_app_validation_unknown_criteria", [])
+                ),
+                "manual_app_validation_unknown_labels": list(
+                    getattr(st, "manual_app_validation_unknown_labels", [])
+                ),
+                "manual_app_validation_blockers": list(
+                    getattr(st, "manual_app_validation_blockers", [])
+                ),
+                "manual_app_validation_blocker_labels": list(
+                    getattr(st, "manual_app_validation_blocker_labels", [])
+                ),
+                "manual_app_validation_manifest_path": str(
+                    getattr(st, "manual_app_validation_manifest_path", "") or ""
+                ),
+                "can_open_settings": st.can_open_settings,
+                "stream_start_ready": st.stream_start_ready,
+                "stream_start_message": st.stream_start_message,
             }
         )
+        self._emit_install_status(st)
         if st.last_preview:
             pix = QPixmap.fromImage(
                 QImage(st.last_preview, 320, 180, QImage.Format.Format_RGB888)

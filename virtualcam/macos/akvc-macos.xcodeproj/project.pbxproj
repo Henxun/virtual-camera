@@ -1,0 +1,1438 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		04451A79A5BE114281CE1992 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 2FF8E1E4C22D9AAF8CC0359B /* main.mm */; };
+		0507A4EE5E6229418C809A2A /* macos_ipc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83127C98B42385CC3B028F14 /* macos_ipc.cpp */; };
+		0C497653086E8344476D837B /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB11788C92241002C5065850 /* Foundation.framework */; };
+		0FC3D1A11073ACEC94EEA2BB /* AKVCDemoFrameGenerator.mm in Sources */ = {isa = PBXBuildFile; fileRef = B1BB07B03076F867504892F8 /* AKVCDemoFrameGenerator.mm */; };
+		10A963705CC903986371C018 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 66DB6DB65F5941886F23C938 /* main.mm */; };
+		19A4DE4672E3F52DCE39FD4D /* framebus_posix.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = E57758148D68698EA74C6F7C /* framebus_posix.h */; };
+		1D7E9727B33A288DBB7E6351 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7EB41CB173D5FA30E8BC2B1 /* AVFoundation.framework */; };
+		21E523ECEA2F0B9B3429E371 /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC8A431420C2F1FC23C1E244 /* CoreMediaIO.framework */; };
+		23B6779A52032689B174371F /* libakvc-macos-ipc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BDA825CBD496AC33E729F78A /* libakvc-macos-ipc.a */; };
+		2836D9967D7BFADDED08A997 /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC8A431420C2F1FC23C1E244 /* CoreMediaIO.framework */; };
+		29CA51B5E82F322816ACF988 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7EB41CB173D5FA30E8BC2B1 /* AVFoundation.framework */; };
+		2F07ED518CBBCED0F4818A31 /* com.sidus.amaran-desktop.cameraextension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 81EF2FD774B230770D71C14E /* com.sidus.amaran-desktop.cameraextension.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		2FA262D92946450234386E92 /* libakvc-macos-ipc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BDA825CBD496AC33E729F78A /* libakvc-macos-ipc.a */; };
+		2FD25DA05654EAFE2E8E1032 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB11788C92241002C5065850 /* Foundation.framework */; };
+		35684400B2BABEBDAAEA2DF9 /* AKVCSinkStreamSource.mm in Sources */ = {isa = PBXBuildFile; fileRef = 7D7FC571CD5F74B93EDBDC21 /* AKVCSinkStreamSource.mm */; };
+		37AB736B0C2B10E54435BB66 /* AKVCDirectCameraSender.h in Headers */ = {isa = PBXBuildFile; fileRef = 708D7808480C6DB6A0D2B112 /* AKVCDirectCameraSender.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		39280804BC90FB2E93D3116A /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC8A431420C2F1FC23C1E244 /* CoreMediaIO.framework */; };
+		39A292CFCCE36FC9746591AA /* SystemExtensions.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 666366B3DB60D96AD76730AE /* SystemExtensions.framework */; };
+		3A546B9B563037F815FAAFD5 /* akvc_macos_uninstall.mm in Sources */ = {isa = PBXBuildFile; fileRef = 8EDBD4ACD5254DA5ED97AE78 /* akvc_macos_uninstall.mm */; };
+		3DB9B4DBF04C9529A2D02881 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7D453E7FA3DE07EB657CAA64 /* CoreMedia.framework */; };
+		44E540C19CA9822128C0AACC /* AKVCCommandSupport.mm in Sources */ = {isa = PBXBuildFile; fileRef = 88344F370C80CBC608F3B6CA /* AKVCCommandSupport.mm */; };
+		44ECD57CBD13286DA422F848 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB11788C92241002C5065850 /* Foundation.framework */; };
+		46FEB45C890720E120F70F0E /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 453C7FFDBE3C4FBA565D25D1 /* AppKit.framework */; };
+		47D0D3D9F52319041670FAA3 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB11788C92241002C5065850 /* Foundation.framework */; };
+		4940947A8E5544A99AA8ACD2 /* akvc_macos_install.mm in Sources */ = {isa = PBXBuildFile; fileRef = 53BCB5410158B8D08EAAC379 /* akvc_macos_install.mm */; };
+		4AEDBD633DAEFD29DE7BD3AB /* akvc_macos_list_devices.mm in Sources */ = {isa = PBXBuildFile; fileRef = 2812B783B09DCDAA789BA969 /* akvc_macos_list_devices.mm */; };
+		4BFA000D98A292E319AFF2F9 /* macos_ipc.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 0B65C8063695F1F03FCAD3FA /* macos_ipc.h */; };
+		4FFD56062078D5F46DF78656 /* libakvc-macos-ipc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BDA825CBD496AC33E729F78A /* libakvc-macos-ipc.a */; };
+		510FCA1B25145372A162BBFD /* akvc_macos_status.mm in Sources */ = {isa = PBXBuildFile; fileRef = ABE2A340B70A1332BBBA4F97 /* akvc_macos_status.mm */; };
+		5FB0C0B9E0CF6AB1691366EF /* DemoControlService.mm in Sources */ = {isa = PBXBuildFile; fileRef = 89914EC5D047702656BC4B0B /* DemoControlService.mm */; };
+		66B40703DD38C3227721A603 /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC8A431420C2F1FC23C1E244 /* CoreMediaIO.framework */; };
+		6896C2C9AC482DE0F0D74758 /* libakvc-macos-ipc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BDA825CBD496AC33E729F78A /* libakvc-macos-ipc.a */; };
+		6A9EF9A5F02183ABB664FFE4 /* AKVCSystemExtensionSupport.mm in Sources */ = {isa = PBXBuildFile; fileRef = 79627753D4B148BA1A0ED84C /* AKVCSystemExtensionSupport.mm */; };
+		6C963ADA26DD10895F61EF3D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB11788C92241002C5065850 /* Foundation.framework */; };
+		6E25F52DA3BAD4742C2DBD66 /* AKVCCommandSupport.mm in Sources */ = {isa = PBXBuildFile; fileRef = 88344F370C80CBC608F3B6CA /* AKVCCommandSupport.mm */; };
+		79A864EA5608707E2143F02C /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = EA5F949B077EE4B56A417799 /* AppDelegate.mm */; };
+		8184317BB54EDA881EAC4067 /* AKVCSystemExtensionSupport.mm in Sources */ = {isa = PBXBuildFile; fileRef = 79627753D4B148BA1A0ED84C /* AKVCSystemExtensionSupport.mm */; };
+		8352C6D21D37AEBD27A8CA9F /* framebus_posix.c in Sources */ = {isa = PBXBuildFile; fileRef = 9F8BE8D483A4DF07BF6F7084 /* framebus_posix.c */; };
+		8769CE7F0F1CF1301E89E91F /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7EB41CB173D5FA30E8BC2B1 /* AVFoundation.framework */; };
+		87F2D9F5D01CB85D30CA99EA /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC8A431420C2F1FC23C1E244 /* CoreMediaIO.framework */; };
+		8B2CB02874A1B876DF0ED879 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 183C05147835DFDEB6830784 /* CoreVideo.framework */; };
+		8C10560CD6D3D8C53E55210F /* AKVCDeviceSource.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5AF4B7E37623F89636FFFE07 /* AKVCDeviceSource.mm */; };
+		8CF84087E5833A50E9BC048B /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7EB41CB173D5FA30E8BC2B1 /* AVFoundation.framework */; };
+		985649806FC345FA9A1690E6 /* framebus_posix.c in Sources */ = {isa = PBXBuildFile; fileRef = 9F8BE8D483A4DF07BF6F7084 /* framebus_posix.c */; };
+		99A6FA46684FD9F1794F195B /* SystemExtensions.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 666366B3DB60D96AD76730AE /* SystemExtensions.framework */; };
+		99D1048BD4E42E1BF8CE6A0E /* AKVCFrameProvider.mm in Sources */ = {isa = PBXBuildFile; fileRef = 51BB9A8FC7D98B68BC797594 /* AKVCFrameProvider.mm */; };
+		9AFC3A647020F25B8E595845 /* SystemExtensions.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 666366B3DB60D96AD76730AE /* SystemExtensions.framework */; };
+		9C5850BB94B8287219D25157 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB11788C92241002C5065850 /* Foundation.framework */; };
+		A3F9E07FEFB46CFCA571C474 /* AKVCSystemExtensionSupport.mm in Sources */ = {isa = PBXBuildFile; fileRef = 79627753D4B148BA1A0ED84C /* AKVCSystemExtensionSupport.mm */; };
+		A7F8FC4AFD1D70CF01A2D854 /* AKVCStreamSource.mm in Sources */ = {isa = PBXBuildFile; fileRef = D97BACF5C3BB645599450F50 /* AKVCStreamSource.mm */; };
+		AB77775FA6BB838D42604F8A /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7EB41CB173D5FA30E8BC2B1 /* AVFoundation.framework */; };
+		AE90B1821FA8ADC16FB99D9D /* libakvc-macos-ipc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BDA825CBD496AC33E729F78A /* libakvc-macos-ipc.a */; };
+		AF1A21A96ABC8351D1C3837C /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB11788C92241002C5065850 /* Foundation.framework */; };
+		AFB2143E1B62B23BB0A4D8B8 /* libakvc-macos-ipc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BDA825CBD496AC33E729F78A /* libakvc-macos-ipc.a */; };
+		B73B12B96C295D7C0E618C31 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 183C05147835DFDEB6830784 /* CoreVideo.framework */; };
+		B7772171657363578E4951D4 /* AKVCDirectCameraSender.mm in Sources */ = {isa = PBXBuildFile; fileRef = FE2A1C11E80633A879F247D5 /* AKVCDirectCameraSender.mm */; };
+		BC6EE4F3D03D30FE532552DB /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB11788C92241002C5065850 /* Foundation.framework */; };
+		C1EE46C62791A5978C1FB963 /* AKVCCommandSupport.mm in Sources */ = {isa = PBXBuildFile; fileRef = 88344F370C80CBC608F3B6CA /* AKVCCommandSupport.mm */; };
+		CE3248A7CD7841093BA1727A /* AKVCSystemExtensionSupport.mm in Sources */ = {isa = PBXBuildFile; fileRef = 79627753D4B148BA1A0ED84C /* AKVCSystemExtensionSupport.mm */; };
+		D14D6756D17786704C057AAF /* SystemExtensions.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 666366B3DB60D96AD76730AE /* SystemExtensions.framework */; };
+		D9B86508BF7920AC76CDA406 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7D453E7FA3DE07EB657CAA64 /* CoreMedia.framework */; };
+		DCF4A4F23E5D153D44958040 /* MainWindowController.mm in Sources */ = {isa = PBXBuildFile; fileRef = FC11B9348320C27B198FA014 /* MainWindowController.mm */; };
+		DDCE48514146CE2A7F43D006 /* framebus_posix.c in Sources */ = {isa = PBXBuildFile; fileRef = 9F8BE8D483A4DF07BF6F7084 /* framebus_posix.c */; };
+		DF97DD37BD14A2875EFED832 /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC8A431420C2F1FC23C1E244 /* CoreMediaIO.framework */; };
+		E002FAFB569B008324B3F1B5 /* macos_ipc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83127C98B42385CC3B028F14 /* macos_ipc.cpp */; };
+		E3AEF58771F3DCE46570368E /* AKVCCommandSupport.mm in Sources */ = {isa = PBXBuildFile; fileRef = 88344F370C80CBC608F3B6CA /* AKVCCommandSupport.mm */; };
+		E440908407CD241EB27CAB1D /* macos_ipc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83127C98B42385CC3B028F14 /* macos_ipc.cpp */; };
+		E6226FCFEDBC97D085CE5B1E /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7EB41CB173D5FA30E8BC2B1 /* AVFoundation.framework */; };
+		EBE651CB2FF4BF66ED2B7E4E /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC8A431420C2F1FC23C1E244 /* CoreMediaIO.framework */; };
+		EC6DCCDFBC68F1F27ABB872F /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7EB41CB173D5FA30E8BC2B1 /* AVFoundation.framework */; };
+		EF096F551C17CC8837D0C3E1 /* CoreMediaIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC8A431420C2F1FC23C1E244 /* CoreMediaIO.framework */; };
+		F2830C7419078A7C19584743 /* AKVCProviderSource.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5BFBCA0C6E4D388CF6A47C92 /* AKVCProviderSource.mm */; };
+		F4DD3408CE223EE4C709AAFE /* akvc_macos_sync_ipc.mm in Sources */ = {isa = PBXBuildFile; fileRef = 044074F2052FB034CA911511 /* akvc_macos_sync_ipc.mm */; };
+		F73D6ECA68816EF69A89574F /* AKVCCommandSupport.mm in Sources */ = {isa = PBXBuildFile; fileRef = 88344F370C80CBC608F3B6CA /* AKVCCommandSupport.mm */; };
+		F81552E4E958DB1593790A8D /* AKVCCommandSupport.mm in Sources */ = {isa = PBXBuildFile; fileRef = 88344F370C80CBC608F3B6CA /* AKVCCommandSupport.mm */; };
+		FE473DED4BD5EE4D5FE9B207 /* libakvc-macos-ipc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BDA825CBD496AC33E729F78A /* libakvc-macos-ipc.a */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		09FB108E777B05862B1ACDD4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 111E84F7A50C6E1B7A30DF19 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3FC0D656F648489ADC0E2300;
+			remoteInfo = "akvc-macos-ipc";
+		};
+		218EAFDED39F7081F48CEBDF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 111E84F7A50C6E1B7A30DF19 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3FC0D656F648489ADC0E2300;
+			remoteInfo = "akvc-macos-ipc";
+		};
+		3E305924D768C1A8AE6809B4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 111E84F7A50C6E1B7A30DF19 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3FC0D656F648489ADC0E2300;
+			remoteInfo = "akvc-macos-ipc";
+		};
+		42AEE8C013CE189A6CE274D3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 111E84F7A50C6E1B7A30DF19 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3FC0D656F648489ADC0E2300;
+			remoteInfo = "akvc-macos-ipc";
+		};
+		A901D945DBBC4ED8AAFE3B49 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 111E84F7A50C6E1B7A30DF19 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3FC0D656F648489ADC0E2300;
+			remoteInfo = "akvc-macos-ipc";
+		};
+		D3F1C24833F1BA9B368CA3DB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 111E84F7A50C6E1B7A30DF19 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 160FB48DF76C421BF5DFDA25;
+			remoteInfo = "akvc-camera-extension";
+		};
+		E3A396E4352E6BE4072A6FBA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 111E84F7A50C6E1B7A30DF19 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3FC0D656F648489ADC0E2300;
+			remoteInfo = "akvc-macos-ipc";
+		};
+		FE62A251BC162F636D03FFF8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 111E84F7A50C6E1B7A30DF19 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3FC0D656F648489ADC0E2300;
+			remoteInfo = "akvc-macos-ipc";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		44C0FB05758188F039CE369E /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "include/$(PRODUCT_NAME)";
+			dstSubfolderSpec = 16;
+			files = (
+				19A4DE4672E3F52DCE39FD4D /* framebus_posix.h in CopyFiles */,
+				4BFA000D98A292E319AFF2F9 /* macos_ipc.h in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C300C9C571B3CA9ECFFBF26A /* Embed System Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(SYSTEM_EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				2F07ED518CBBCED0F4818A31 /* com.sidus.amaran-desktop.cameraextension.systemextension in Embed System Extensions */,
+			);
+			name = "Embed System Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		044074F2052FB034CA911511 /* akvc_macos_sync_ipc.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = akvc_macos_sync_ipc.mm; sourceTree = "<group>"; };
+		0B65C8063695F1F03FCAD3FA /* macos_ipc.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = macos_ipc.h; sourceTree = "<group>"; };
+		183C05147835DFDEB6830784 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
+		2812B783B09DCDAA789BA969 /* akvc_macos_list_devices.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = akvc_macos_list_devices.mm; sourceTree = "<group>"; };
+		29196DE4AEB088B2AA8441D3 /* akvc-demo-app.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "akvc-demo-app.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		2FF8E1E4C22D9AAF8CC0359B /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		33D8FE1DE40D9E4F69F1C270 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		3448415E72DEA33DE6779E47 /* AKVCStreamSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AKVCStreamSource.h; sourceTree = "<group>"; };
+		359D64FB799ECF4E2BB5E115 /* AKVCDemoFrameGenerator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AKVCDemoFrameGenerator.h; sourceTree = "<group>"; };
+		361B47E0E8CF4FDB8C011D90 /* AKVCCommandSupport.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AKVCCommandSupport.h; sourceTree = "<group>"; };
+		373C300A9FB721208E43AA78 /* akvc-macos-direct-sender.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; name = "akvc-macos-direct-sender.dylib"; path = "libakvc-macos-direct-sender.dylib"; sourceTree = BUILT_PRODUCTS_DIR; };
+		453C7FFDBE3C4FBA565D25D1 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		4AC4B58A7389A3B3441A2843 /* DemoControlService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DemoControlService.h; sourceTree = "<group>"; };
+		4CDD6E65ED4562A0D8C8DAE3 /* AKVCFrameProvider.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AKVCFrameProvider.h; sourceTree = "<group>"; };
+		509A8F370C739CA8D52C17F9 /* AKVCSystemExtensionSupport.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AKVCSystemExtensionSupport.h; sourceTree = "<group>"; };
+		51BB9A8FC7D98B68BC797594 /* AKVCFrameProvider.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AKVCFrameProvider.mm; sourceTree = "<group>"; };
+		53BCB5410158B8D08EAAC379 /* akvc_macos_install.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = akvc_macos_install.mm; sourceTree = "<group>"; };
+		5744DD3A21605DB19B17ADC9 /* akvc-macos-status */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = "akvc-macos-status"; sourceTree = BUILT_PRODUCTS_DIR; };
+		5AF4B7E37623F89636FFFE07 /* AKVCDeviceSource.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AKVCDeviceSource.mm; sourceTree = "<group>"; };
+		5BFBCA0C6E4D388CF6A47C92 /* AKVCProviderSource.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AKVCProviderSource.mm; sourceTree = "<group>"; };
+		666366B3DB60D96AD76730AE /* SystemExtensions.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemExtensions.framework; path = System/Library/Frameworks/SystemExtensions.framework; sourceTree = SDKROOT; };
+		66DB6DB65F5941886F23C938 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		708D7808480C6DB6A0D2B112 /* AKVCDirectCameraSender.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AKVCDirectCameraSender.h; sourceTree = "<group>"; };
+		79627753D4B148BA1A0ED84C /* AKVCSystemExtensionSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AKVCSystemExtensionSupport.mm; sourceTree = "<group>"; };
+		7D453E7FA3DE07EB657CAA64 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
+		7D515C43874949F7D2964486 /* akvc-macos-install */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = "akvc-macos-install"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7D7FC571CD5F74B93EDBDC21 /* AKVCSinkStreamSource.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AKVCSinkStreamSource.mm; sourceTree = "<group>"; };
+		81EF2FD774B230770D71C14E /* com.sidus.amaran-desktop.cameraextension.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = "com.sidus.amaran-desktop.cameraextension.systemextension"; sourceTree = BUILT_PRODUCTS_DIR; };
+		83127C98B42385CC3B028F14 /* macos_ipc.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = macos_ipc.cpp; sourceTree = "<group>"; };
+		869B367D98B823890EC85FA0 /* MainWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MainWindowController.h; sourceTree = "<group>"; };
+		88344F370C80CBC608F3B6CA /* AKVCCommandSupport.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AKVCCommandSupport.mm; sourceTree = "<group>"; };
+		89914EC5D047702656BC4B0B /* DemoControlService.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DemoControlService.mm; sourceTree = "<group>"; };
+		8EDBD4ACD5254DA5ED97AE78 /* akvc_macos_uninstall.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = akvc_macos_uninstall.mm; sourceTree = "<group>"; };
+		9F8BE8D483A4DF07BF6F7084 /* framebus_posix.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = framebus_posix.c; sourceTree = "<group>"; };
+		A05FA99657949F296500E92F /* AKVCSinkStreamSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AKVCSinkStreamSource.h; sourceTree = "<group>"; };
+		A28F366427F5FB5C4E20B37E /* akvc-macos-sync-ipc */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = "akvc-macos-sync-ipc"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A7E2ABCB16D224F6DD6B0B11 /* akvc-macos-list-devices */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = "akvc-macos-list-devices"; sourceTree = BUILT_PRODUCTS_DIR; };
+		ABE2A340B70A1332BBBA4F97 /* akvc_macos_status.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = akvc_macos_status.mm; sourceTree = "<group>"; };
+		B1BB07B03076F867504892F8 /* AKVCDemoFrameGenerator.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AKVCDemoFrameGenerator.mm; sourceTree = "<group>"; };
+		B7EB41CB173D5FA30E8BC2B1 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		BC8A431420C2F1FC23C1E244 /* CoreMediaIO.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMediaIO.framework; path = System/Library/Frameworks/CoreMediaIO.framework; sourceTree = SDKROOT; };
+		BDA825CBD496AC33E729F78A /* libakvc-macos-ipc.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libakvc-macos-ipc.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C2FE31D1022AF17D1164B7D9 /* AKVCProviderSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AKVCProviderSource.h; sourceTree = "<group>"; };
+		CF230C33C6DF9AB0AC119F45 /* akvc-macos-uninstall */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = "akvc-macos-uninstall"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D97BACF5C3BB645599450F50 /* AKVCStreamSource.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AKVCStreamSource.mm; sourceTree = "<group>"; };
+		DB11788C92241002C5065850 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		DC0864960E78C92BECE0935C /* AKVCDeviceSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AKVCDeviceSource.h; sourceTree = "<group>"; };
+		E57758148D68698EA74C6F7C /* framebus_posix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = framebus_posix.h; sourceTree = "<group>"; };
+		EA5F949B077EE4B56A417799 /* AppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
+		FC11B9348320C27B198FA014 /* MainWindowController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MainWindowController.mm; sourceTree = "<group>"; };
+		FE2A1C11E80633A879F247D5 /* AKVCDirectCameraSender.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AKVCDirectCameraSender.mm; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3EC8E468B62253120520C283 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AFB2143E1B62B23BB0A4D8B8 /* libakvc-macos-ipc.a in Frameworks */,
+				46FEB45C890720E120F70F0E /* AppKit.framework in Frameworks */,
+				BC6EE4F3D03D30FE532552DB /* Foundation.framework in Frameworks */,
+				1D7E9727B33A288DBB7E6351 /* AVFoundation.framework in Frameworks */,
+				21E523ECEA2F0B9B3429E371 /* CoreMediaIO.framework in Frameworks */,
+				9AFC3A647020F25B8E595845 /* SystemExtensions.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5346421485AE1472C08ABB12 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FE473DED4BD5EE4D5FE9B207 /* libakvc-macos-ipc.a in Frameworks */,
+				6C963ADA26DD10895F61EF3D /* Foundation.framework in Frameworks */,
+				AB77775FA6BB838D42604F8A /* AVFoundation.framework in Frameworks */,
+				EF096F551C17CC8837D0C3E1 /* CoreMediaIO.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		59B75B7690495D7868E75989 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9C5850BB94B8287219D25157 /* Foundation.framework in Frameworks */,
+				29CA51B5E82F322816ACF988 /* AVFoundation.framework in Frameworks */,
+				39280804BC90FB2E93D3116A /* CoreMediaIO.framework in Frameworks */,
+				3DB9B4DBF04C9529A2D02881 /* CoreMedia.framework in Frameworks */,
+				B73B12B96C295D7C0E618C31 /* CoreVideo.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		67E60F94DB9C5FEB8F7CC844 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6896C2C9AC482DE0F0D74758 /* libakvc-macos-ipc.a in Frameworks */,
+				AF1A21A96ABC8351D1C3837C /* Foundation.framework in Frameworks */,
+				8769CE7F0F1CF1301E89E91F /* AVFoundation.framework in Frameworks */,
+				2836D9967D7BFADDED08A997 /* CoreMediaIO.framework in Frameworks */,
+				99A6FA46684FD9F1794F195B /* SystemExtensions.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		81C6C37FECDF833637195CC7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AE90B1821FA8ADC16FB99D9D /* libakvc-macos-ipc.a in Frameworks */,
+				47D0D3D9F52319041670FAA3 /* Foundation.framework in Frameworks */,
+				EC6DCCDFBC68F1F27ABB872F /* AVFoundation.framework in Frameworks */,
+				DF97DD37BD14A2875EFED832 /* CoreMediaIO.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DABE324F0D8D30E5EB73B24A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				23B6779A52032689B174371F /* libakvc-macos-ipc.a in Frameworks */,
+				0C497653086E8344476D837B /* Foundation.framework in Frameworks */,
+				8CF84087E5833A50E9BC048B /* AVFoundation.framework in Frameworks */,
+				87F2D9F5D01CB85D30CA99EA /* CoreMediaIO.framework in Frameworks */,
+				D14D6756D17786704C057AAF /* SystemExtensions.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E567C98B6DCC678673EA43F4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2FA262D92946450234386E92 /* libakvc-macos-ipc.a in Frameworks */,
+				2FD25DA05654EAFE2E8E1032 /* Foundation.framework in Frameworks */,
+				E6226FCFEDBC97D085CE5B1E /* AVFoundation.framework in Frameworks */,
+				EBE651CB2FF4BF66ED2B7E4E /* CoreMediaIO.framework in Frameworks */,
+				39A292CFCCE36FC9746591AA /* SystemExtensions.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FACBBDD71C9B49E7C7793576 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4FFD56062078D5F46DF78656 /* libakvc-macos-ipc.a in Frameworks */,
+				44ECD57CBD13286DA422F848 /* Foundation.framework in Frameworks */,
+				66B40703DD38C3227721A603 /* CoreMediaIO.framework in Frameworks */,
+				D9B86508BF7920AC76CDA406 /* CoreMedia.framework in Frameworks */,
+				8B2CB02874A1B876DF0ED879 /* CoreVideo.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		07760E949808C77708B5D94C /* demo_app */ = {
+			isa = PBXGroup;
+			children = (
+				33D8FE1DE40D9E4F69F1C270 /* AppDelegate.h */,
+				EA5F949B077EE4B56A417799 /* AppDelegate.mm */,
+				4AC4B58A7389A3B3441A2843 /* DemoControlService.h */,
+				89914EC5D047702656BC4B0B /* DemoControlService.mm */,
+				66DB6DB65F5941886F23C938 /* main.mm */,
+				869B367D98B823890EC85FA0 /* MainWindowController.h */,
+				FC11B9348320C27B198FA014 /* MainWindowController.mm */,
+			);
+			path = demo_app;
+			sourceTree = "<group>";
+		};
+		2FE32875BCD90EA8BED3B263 /* camera_extension */ = {
+			isa = PBXGroup;
+			children = (
+				DC0864960E78C92BECE0935C /* AKVCDeviceSource.h */,
+				5AF4B7E37623F89636FFFE07 /* AKVCDeviceSource.mm */,
+				4CDD6E65ED4562A0D8C8DAE3 /* AKVCFrameProvider.h */,
+				51BB9A8FC7D98B68BC797594 /* AKVCFrameProvider.mm */,
+				C2FE31D1022AF17D1164B7D9 /* AKVCProviderSource.h */,
+				5BFBCA0C6E4D388CF6A47C92 /* AKVCProviderSource.mm */,
+				A05FA99657949F296500E92F /* AKVCSinkStreamSource.h */,
+				7D7FC571CD5F74B93EDBDC21 /* AKVCSinkStreamSource.mm */,
+				3448415E72DEA33DE6779E47 /* AKVCStreamSource.h */,
+				D97BACF5C3BB645599450F50 /* AKVCStreamSource.mm */,
+				2FF8E1E4C22D9AAF8CC0359B /* main.mm */,
+			);
+			path = camera_extension;
+			sourceTree = "<group>";
+		};
+		3CA9B63E46C32C6FFC80E246 /* direct_sender */ = {
+			isa = PBXGroup;
+			children = (
+				708D7808480C6DB6A0D2B112 /* AKVCDirectCameraSender.h */,
+				FE2A1C11E80633A879F247D5 /* AKVCDirectCameraSender.mm */,
+			);
+			path = direct_sender;
+			sourceTree = "<group>";
+		};
+		67880E8FA63354B8E69BD90A /* include */ = {
+			isa = PBXGroup;
+			children = (
+				920CD6AF80C68E5C03048026 /* akvc */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		7A1A185438ED592E4CB10A76 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				453C7FFDBE3C4FBA565D25D1 /* AppKit.framework */,
+				B7EB41CB173D5FA30E8BC2B1 /* AVFoundation.framework */,
+				7D453E7FA3DE07EB657CAA64 /* CoreMedia.framework */,
+				BC8A431420C2F1FC23C1E244 /* CoreMediaIO.framework */,
+				183C05147835DFDEB6830784 /* CoreVideo.framework */,
+				DB11788C92241002C5065850 /* Foundation.framework */,
+				666366B3DB60D96AD76730AE /* SystemExtensions.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		89315388B5BD5899CBAD1DDF /* ipc */ = {
+			isa = PBXGroup;
+			children = (
+				67880E8FA63354B8E69BD90A /* include */,
+				C08F011229C45BBD25CEE172 /* src */,
+			);
+			path = ipc;
+			sourceTree = "<group>";
+		};
+		920CD6AF80C68E5C03048026 /* akvc */ = {
+			isa = PBXGroup;
+			children = (
+				E57758148D68698EA74C6F7C /* framebus_posix.h */,
+				0B65C8063695F1F03FCAD3FA /* macos_ipc.h */,
+			);
+			path = akvc;
+			sourceTree = "<group>";
+		};
+		9E36D2EC463CFD844F3B1872 = {
+			isa = PBXGroup;
+			children = (
+				2FE32875BCD90EA8BED3B263 /* camera_extension */,
+				A65E2958B2F9D2DAACC77610 /* control_bridge */,
+				07760E949808C77708B5D94C /* demo_app */,
+				D0CDD593C2B74A6BCE61B4AE /* demo_support */,
+				3CA9B63E46C32C6FFC80E246 /* direct_sender */,
+				89315388B5BD5899CBAD1DDF /* ipc */,
+				7A1A185438ED592E4CB10A76 /* Frameworks */,
+				F228424A9857245A445887B4 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A65E2958B2F9D2DAACC77610 /* control_bridge */ = {
+			isa = PBXGroup;
+			children = (
+				53BCB5410158B8D08EAAC379 /* akvc_macos_install.mm */,
+				2812B783B09DCDAA789BA969 /* akvc_macos_list_devices.mm */,
+				ABE2A340B70A1332BBBA4F97 /* akvc_macos_status.mm */,
+				044074F2052FB034CA911511 /* akvc_macos_sync_ipc.mm */,
+				8EDBD4ACD5254DA5ED97AE78 /* akvc_macos_uninstall.mm */,
+				361B47E0E8CF4FDB8C011D90 /* AKVCCommandSupport.h */,
+				88344F370C80CBC608F3B6CA /* AKVCCommandSupport.mm */,
+				509A8F370C739CA8D52C17F9 /* AKVCSystemExtensionSupport.h */,
+				79627753D4B148BA1A0ED84C /* AKVCSystemExtensionSupport.mm */,
+			);
+			path = control_bridge;
+			sourceTree = "<group>";
+		};
+		C08F011229C45BBD25CEE172 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				9F8BE8D483A4DF07BF6F7084 /* framebus_posix.c */,
+				83127C98B42385CC3B028F14 /* macos_ipc.cpp */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		D0CDD593C2B74A6BCE61B4AE /* demo_support */ = {
+			isa = PBXGroup;
+			children = (
+				359D64FB799ECF4E2BB5E115 /* AKVCDemoFrameGenerator.h */,
+				B1BB07B03076F867504892F8 /* AKVCDemoFrameGenerator.mm */,
+			);
+			path = demo_support;
+			sourceTree = "<group>";
+		};
+		F228424A9857245A445887B4 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				81EF2FD774B230770D71C14E /* com.sidus.amaran-desktop.cameraextension.systemextension */,
+				29196DE4AEB088B2AA8441D3 /* akvc-demo-app.app */,
+				373C300A9FB721208E43AA78 /* akvc-macos-direct-sender.dylib */,
+				7D515C43874949F7D2964486 /* akvc-macos-install */,
+				A7E2ABCB16D224F6DD6B0B11 /* akvc-macos-list-devices */,
+				5744DD3A21605DB19B17ADC9 /* akvc-macos-status */,
+				A28F366427F5FB5C4E20B37E /* akvc-macos-sync-ipc */,
+				CF230C33C6DF9AB0AC119F45 /* akvc-macos-uninstall */,
+				BDA825CBD496AC33E729F78A /* libakvc-macos-ipc.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		0D69BAE8E310739FE331B8F5 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				37AB736B0C2B10E54435BB66 /* AKVCDirectCameraSender.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		0D69E839EB6E339516BB7EF5 /* akvc-demo-app */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 38F3F4EBF00C868A5EE1BF8A /* Build configuration list for PBXNativeTarget "akvc-demo-app" */;
+			buildPhases = (
+				E0D3933F44A7F804BC2AD83C /* Sources */,
+				3EC8E468B62253120520C283 /* Frameworks */,
+				C300C9C571B3CA9ECFFBF26A /* Embed System Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				DD9644864A6C64D39B8CDA82 /* PBXTargetDependency */,
+				693811ACA058484DC53123DF /* PBXTargetDependency */,
+			);
+			name = "akvc-demo-app";
+			packageProductDependencies = (
+			);
+			productName = "akvc-demo-app";
+			productReference = 29196DE4AEB088B2AA8441D3 /* akvc-demo-app.app */;
+			productType = "com.apple.product-type.application";
+		};
+		160FB48DF76C421BF5DFDA25 /* akvc-camera-extension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 23760A8E2A8F7343CBF84F7C /* Build configuration list for PBXNativeTarget "akvc-camera-extension" */;
+			buildPhases = (
+				8D879C3BAF563652D1F4FB46 /* Sources */,
+				FACBBDD71C9B49E7C7793576 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AB0A8444AC45209BFFF9D262 /* PBXTargetDependency */,
+			);
+			name = "akvc-camera-extension";
+			packageProductDependencies = (
+			);
+			productName = "akvc-camera-extension";
+			productReference = 81EF2FD774B230770D71C14E /* com.sidus.amaran-desktop.cameraextension.systemextension */;
+			productType = "com.apple.product-type.system-extension";
+		};
+		3FC0D656F648489ADC0E2300 /* akvc-macos-ipc */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B80C31BA4ACF9C297BBC3F0A /* Build configuration list for PBXNativeTarget "akvc-macos-ipc" */;
+			buildPhases = (
+				44C0FB05758188F039CE369E /* CopyFiles */,
+				47ADE6283EE4C418D401F3F5 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "akvc-macos-ipc";
+			packageProductDependencies = (
+			);
+			productName = "akvc-macos-ipc";
+			productReference = BDA825CBD496AC33E729F78A /* libakvc-macos-ipc.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		42DF37A7C1D2FBF0F3B55021 /* akvc-macos-direct-sender */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 217CFB21ADBA008D6AE32FC5 /* Build configuration list for PBXNativeTarget "akvc-macos-direct-sender" */;
+			buildPhases = (
+				0D69BAE8E310739FE331B8F5 /* Headers */,
+				CAFDEFCC0ED91F5FB345ECE8 /* Sources */,
+				59B75B7690495D7868E75989 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "akvc-macos-direct-sender";
+			packageProductDependencies = (
+			);
+			productName = "akvc-macos-direct-sender";
+			productReference = 373C300A9FB721208E43AA78 /* akvc-macos-direct-sender.dylib */;
+			productType = "com.apple.product-type.library.dynamic";
+		};
+		503DDCB63B1790734F315424 /* akvc-macos-uninstall */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1F842DBD162CB51AA5C9B971 /* Build configuration list for PBXNativeTarget "akvc-macos-uninstall" */;
+			buildPhases = (
+				B41E6F6C3EC1801C796CCE28 /* Sources */,
+				67E60F94DB9C5FEB8F7CC844 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B7EBE8284FB32DA768AC3A87 /* PBXTargetDependency */,
+			);
+			name = "akvc-macos-uninstall";
+			packageProductDependencies = (
+			);
+			productName = "akvc-macos-uninstall";
+			productReference = CF230C33C6DF9AB0AC119F45 /* akvc-macos-uninstall */;
+			productType = "com.apple.product-type.tool";
+		};
+		6ED30177942905453E7A114F /* akvc-macos-status */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8D67BD39A50F867B883FE596 /* Build configuration list for PBXNativeTarget "akvc-macos-status" */;
+			buildPhases = (
+				C6D5F9C052B583724E8F2DA8 /* Sources */,
+				E567C98B6DCC678673EA43F4 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				15A150524F66D72C4A4C7DA2 /* PBXTargetDependency */,
+			);
+			name = "akvc-macos-status";
+			packageProductDependencies = (
+			);
+			productName = "akvc-macos-status";
+			productReference = 5744DD3A21605DB19B17ADC9 /* akvc-macos-status */;
+			productType = "com.apple.product-type.tool";
+		};
+		AA8EB215151BB34036784608 /* akvc-macos-list-devices */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B7D4FEC572E0F3D93F24FFA2 /* Build configuration list for PBXNativeTarget "akvc-macos-list-devices" */;
+			buildPhases = (
+				973610C68A6EA2EB12324D1E /* Sources */,
+				5346421485AE1472C08ABB12 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CAB5422195A2465BA17C65E6 /* PBXTargetDependency */,
+			);
+			name = "akvc-macos-list-devices";
+			packageProductDependencies = (
+			);
+			productName = "akvc-macos-list-devices";
+			productReference = A7E2ABCB16D224F6DD6B0B11 /* akvc-macos-list-devices */;
+			productType = "com.apple.product-type.tool";
+		};
+		F50BA8A90B705ABF55DE9BEF /* akvc-macos-install */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60F631DD00C446DACCDD3AB6 /* Build configuration list for PBXNativeTarget "akvc-macos-install" */;
+			buildPhases = (
+				43AE1169D3994E060597A8E6 /* Sources */,
+				DABE324F0D8D30E5EB73B24A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				377086E06DB6690094652993 /* PBXTargetDependency */,
+			);
+			name = "akvc-macos-install";
+			packageProductDependencies = (
+			);
+			productName = "akvc-macos-install";
+			productReference = 7D515C43874949F7D2964486 /* akvc-macos-install */;
+			productType = "com.apple.product-type.tool";
+		};
+		F936D0ABC1C05BC7238F2F10 /* akvc-macos-sync-ipc */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4E96F457A416B613CC1EA22 /* Build configuration list for PBXNativeTarget "akvc-macos-sync-ipc" */;
+			buildPhases = (
+				560AA4B81509A59D0E0D3DB0 /* Sources */,
+				81C6C37FECDF833637195CC7 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9A582AD29AFA6781C5BDFDA4 /* PBXTargetDependency */,
+			);
+			name = "akvc-macos-sync-ipc";
+			packageProductDependencies = (
+			);
+			productName = "akvc-macos-sync-ipc";
+			productReference = A28F366427F5FB5C4E20B37E /* akvc-macos-sync-ipc */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		111E84F7A50C6E1B7A30DF19 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					3FC0D656F648489ADC0E2300 = {
+						DevelopmentTeam = XP3H66JF79;
+					};
+					42DF37A7C1D2FBF0F3B55021 = {
+						DevelopmentTeam = XP3H66JF79;
+					};
+					503DDCB63B1790734F315424 = {
+						DevelopmentTeam = XP3H66JF79;
+					};
+					6ED30177942905453E7A114F = {
+						DevelopmentTeam = XP3H66JF79;
+					};
+					AA8EB215151BB34036784608 = {
+						DevelopmentTeam = XP3H66JF79;
+					};
+					F50BA8A90B705ABF55DE9BEF = {
+						DevelopmentTeam = XP3H66JF79;
+					};
+					F936D0ABC1C05BC7238F2F10 = {
+						DevelopmentTeam = XP3H66JF79;
+					};
+				};
+			};
+			buildConfigurationList = EDAD0CD7576D6054A8924EB3 /* Build configuration list for PBXProject "akvc-macos" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 9E36D2EC463CFD844F3B1872;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F228424A9857245A445887B4 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				160FB48DF76C421BF5DFDA25 /* akvc-camera-extension */,
+				0D69E839EB6E339516BB7EF5 /* akvc-demo-app */,
+				42DF37A7C1D2FBF0F3B55021 /* akvc-macos-direct-sender */,
+				F50BA8A90B705ABF55DE9BEF /* akvc-macos-install */,
+				3FC0D656F648489ADC0E2300 /* akvc-macos-ipc */,
+				AA8EB215151BB34036784608 /* akvc-macos-list-devices */,
+				6ED30177942905453E7A114F /* akvc-macos-status */,
+				F936D0ABC1C05BC7238F2F10 /* akvc-macos-sync-ipc */,
+				503DDCB63B1790734F315424 /* akvc-macos-uninstall */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		43AE1169D3994E060597A8E6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				44E540C19CA9822128C0AACC /* AKVCCommandSupport.mm in Sources */,
+				8184317BB54EDA881EAC4067 /* AKVCSystemExtensionSupport.mm in Sources */,
+				4940947A8E5544A99AA8ACD2 /* akvc_macos_install.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		47ADE6283EE4C418D401F3F5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DDCE48514146CE2A7F43D006 /* framebus_posix.c in Sources */,
+				E002FAFB569B008324B3F1B5 /* macos_ipc.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		560AA4B81509A59D0E0D3DB0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6E25F52DA3BAD4742C2DBD66 /* AKVCCommandSupport.mm in Sources */,
+				F4DD3408CE223EE4C709AAFE /* akvc_macos_sync_ipc.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8D879C3BAF563652D1F4FB46 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0FC3D1A11073ACEC94EEA2BB /* AKVCDemoFrameGenerator.mm in Sources */,
+				8C10560CD6D3D8C53E55210F /* AKVCDeviceSource.mm in Sources */,
+				99D1048BD4E42E1BF8CE6A0E /* AKVCFrameProvider.mm in Sources */,
+				F2830C7419078A7C19584743 /* AKVCProviderSource.mm in Sources */,
+				35684400B2BABEBDAAEA2DF9 /* AKVCSinkStreamSource.mm in Sources */,
+				A7F8FC4AFD1D70CF01A2D854 /* AKVCStreamSource.mm in Sources */,
+				8352C6D21D37AEBD27A8CA9F /* framebus_posix.c in Sources */,
+				E440908407CD241EB27CAB1D /* macos_ipc.cpp in Sources */,
+				04451A79A5BE114281CE1992 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		973610C68A6EA2EB12324D1E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F73D6ECA68816EF69A89574F /* AKVCCommandSupport.mm in Sources */,
+				4AEDBD633DAEFD29DE7BD3AB /* akvc_macos_list_devices.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B41E6F6C3EC1801C796CCE28 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C1EE46C62791A5978C1FB963 /* AKVCCommandSupport.mm in Sources */,
+				A3F9E07FEFB46CFCA571C474 /* AKVCSystemExtensionSupport.mm in Sources */,
+				3A546B9B563037F815FAAFD5 /* akvc_macos_uninstall.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C6D5F9C052B583724E8F2DA8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E3AEF58771F3DCE46570368E /* AKVCCommandSupport.mm in Sources */,
+				6A9EF9A5F02183ABB664FFE4 /* AKVCSystemExtensionSupport.mm in Sources */,
+				510FCA1B25145372A162BBFD /* akvc_macos_status.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAFDEFCC0ED91F5FB345ECE8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B7772171657363578E4951D4 /* AKVCDirectCameraSender.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E0D3933F44A7F804BC2AD83C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F81552E4E958DB1593790A8D /* AKVCCommandSupport.mm in Sources */,
+				CE3248A7CD7841093BA1727A /* AKVCSystemExtensionSupport.mm in Sources */,
+				79A864EA5608707E2143F02C /* AppDelegate.mm in Sources */,
+				5FB0C0B9E0CF6AB1691366EF /* DemoControlService.mm in Sources */,
+				DCF4A4F23E5D153D44958040 /* MainWindowController.mm in Sources */,
+				985649806FC345FA9A1690E6 /* framebus_posix.c in Sources */,
+				0507A4EE5E6229418C809A2A /* macos_ipc.cpp in Sources */,
+				10A963705CC903986371C018 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		15A150524F66D72C4A4C7DA2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3FC0D656F648489ADC0E2300 /* akvc-macos-ipc */;
+			targetProxy = FE62A251BC162F636D03FFF8 /* PBXContainerItemProxy */;
+		};
+		377086E06DB6690094652993 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3FC0D656F648489ADC0E2300 /* akvc-macos-ipc */;
+			targetProxy = 42AEE8C013CE189A6CE274D3 /* PBXContainerItemProxy */;
+		};
+		693811ACA058484DC53123DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3FC0D656F648489ADC0E2300 /* akvc-macos-ipc */;
+			targetProxy = E3A396E4352E6BE4072A6FBA /* PBXContainerItemProxy */;
+		};
+		9A582AD29AFA6781C5BDFDA4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3FC0D656F648489ADC0E2300 /* akvc-macos-ipc */;
+			targetProxy = 218EAFDED39F7081F48CEBDF /* PBXContainerItemProxy */;
+		};
+		AB0A8444AC45209BFFF9D262 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3FC0D656F648489ADC0E2300 /* akvc-macos-ipc */;
+			targetProxy = 09FB108E777B05862B1ACDD4 /* PBXContainerItemProxy */;
+		};
+		B7EBE8284FB32DA768AC3A87 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3FC0D656F648489ADC0E2300 /* akvc-macos-ipc */;
+			targetProxy = 3E305924D768C1A8AE6809B4 /* PBXContainerItemProxy */;
+		};
+		CAB5422195A2465BA17C65E6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3FC0D656F648489ADC0E2300 /* akvc-macos-ipc */;
+			targetProxy = A901D945DBBC4ED8AAFE3B49 /* PBXContainerItemProxy */;
+		};
+		DD9644864A6C64D39B8CDA82 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 160FB48DF76C421BF5DFDA25 /* akvc-camera-extension */;
+			targetProxy = D3F1C24833F1BA9B368CA3DB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		01BCADFF76FBC2E35B718F6E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-status";
+				PRODUCT_NAME = "akvc-macos-status";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		04BD4C83092508DC79171D29 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-ipc";
+				PRODUCT_NAME = "akvc-macos-ipc";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		05C94575994948FECC6F089B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-sync-ipc";
+				PRODUCT_NAME = "akvc-macos-sync-ipc";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		0DA3642D0E253273123C8A98 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = demo_app/DemoApp.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = XP3H66JF79;
+				INFOPLIST_FILE = demo_app/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.sidus.amaran-desktop";
+				PRODUCT_NAME = "akvc-demo-app";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		1FA56F73982EF8E3D07A849B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-uninstall";
+				PRODUCT_NAME = "akvc-macos-uninstall";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		296D698716ADF62D267CB2FF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = camera_extension/CameraExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = XP3H66JF79;
+				FULL_PRODUCT_NAME = "com.sidus.amaran-desktop.cameraextension.systemextension";
+				INFOPLIST_FILE = camera_extension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.sidus.amaran-desktop.cameraextension";
+				PRODUCT_NAME = "akvc-camera-extension";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				WRAPPER_NAME = "com.sidus.amaran-desktop.cameraextension.systemextension";
+			};
+			name = Debug;
+		};
+		3747F20E48D76261E6104FBF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-list-devices";
+				PRODUCT_NAME = "akvc-macos-list-devices";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		444F50296B8DA3842768ACA0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-direct-sender";
+				PRODUCT_NAME = "libakvc-macos-direct-sender";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		49493172CA10B307078808F1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-ipc";
+				PRODUCT_NAME = "akvc-macos-ipc";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		818571F907259EE474D1ADD6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = camera_extension/CameraExtension.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = XP3H66JF79;
+				FULL_PRODUCT_NAME = "com.sidus.amaran-desktop.cameraextension.systemextension";
+				INFOPLIST_FILE = camera_extension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.sidus.amaran-desktop.cameraextension";
+				PRODUCT_NAME = "akvc-camera-extension";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				WRAPPER_NAME = "com.sidus.amaran-desktop.cameraextension.systemextension";
+			};
+			name = Release;
+		};
+		820A27A3CB55E8CB9D338852 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-sync-ipc";
+				PRODUCT_NAME = "akvc-macos-sync-ipc";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		95E8D64EDA9D39D04FFC75DD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-install";
+				PRODUCT_NAME = "akvc-macos-install";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		BC70909AFDC9FCADCC6445A0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-list-devices";
+				PRODUCT_NAME = "akvc-macos-list-devices";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		C28064CEAAC3B9982E3D0564 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = demo_app/DemoApp.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = XP3H66JF79;
+				INFOPLIST_FILE = demo_app/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.sidus.amaran-desktop";
+				PRODUCT_NAME = "akvc-demo-app";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		D3B699C9E8994E30FCEF1838 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = (
+					arm64,
+					x86_64,
+				);
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = XP3H66JF79;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/ipc/include",
+					"$(SRCROOT)/../shared",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "-std=gnu++20";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		D418E42E2762F558C2BE6BC4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-install";
+				PRODUCT_NAME = "akvc-macos-install";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		F2DF63469135D284E16FCA67 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-direct-sender";
+				PRODUCT_NAME = "libakvc-macos-direct-sender";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		F415EBF54CE8B47267028516 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-status";
+				PRODUCT_NAME = "akvc-macos-status";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		F8658ED695B3C74A9FBD79D7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.akvc.akvc-macos-uninstall";
+				PRODUCT_NAME = "akvc-macos-uninstall";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		FADE679A5608CACB4EEDDF76 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = (
+					arm64,
+					x86_64,
+				);
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = XP3H66JF79;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/ipc/include",
+					"$(SRCROOT)/../shared",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "-std=gnu++20";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1F842DBD162CB51AA5C9B971 /* Build configuration list for PBXNativeTarget "akvc-macos-uninstall" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F8658ED695B3C74A9FBD79D7 /* Debug */,
+				1FA56F73982EF8E3D07A849B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		217CFB21ADBA008D6AE32FC5 /* Build configuration list for PBXNativeTarget "akvc-macos-direct-sender" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F2DF63469135D284E16FCA67 /* Debug */,
+				444F50296B8DA3842768ACA0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		23760A8E2A8F7343CBF84F7C /* Build configuration list for PBXNativeTarget "akvc-camera-extension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				296D698716ADF62D267CB2FF /* Debug */,
+				818571F907259EE474D1ADD6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		38F3F4EBF00C868A5EE1BF8A /* Build configuration list for PBXNativeTarget "akvc-demo-app" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0DA3642D0E253273123C8A98 /* Debug */,
+				C28064CEAAC3B9982E3D0564 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		60F631DD00C446DACCDD3AB6 /* Build configuration list for PBXNativeTarget "akvc-macos-install" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				95E8D64EDA9D39D04FFC75DD /* Debug */,
+				D418E42E2762F558C2BE6BC4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8D67BD39A50F867B883FE596 /* Build configuration list for PBXNativeTarget "akvc-macos-status" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F415EBF54CE8B47267028516 /* Debug */,
+				01BCADFF76FBC2E35B718F6E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B7D4FEC572E0F3D93F24FFA2 /* Build configuration list for PBXNativeTarget "akvc-macos-list-devices" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3747F20E48D76261E6104FBF /* Debug */,
+				BC70909AFDC9FCADCC6445A0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B80C31BA4ACF9C297BBC3F0A /* Build configuration list for PBXNativeTarget "akvc-macos-ipc" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				49493172CA10B307078808F1 /* Debug */,
+				04BD4C83092508DC79171D29 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E4E96F457A416B613CC1EA22 /* Build configuration list for PBXNativeTarget "akvc-macos-sync-ipc" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				05C94575994948FECC6F089B /* Debug */,
+				820A27A3CB55E8CB9D338852 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EDAD0CD7576D6054A8924EB3 /* Build configuration list for PBXProject "akvc-macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D3B699C9E8994E30FCEF1838 /* Debug */,
+				FADE679A5608CACB4EEDDF76 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 111E84F7A50C6E1B7A30DF19 /* Project object */;
+}
