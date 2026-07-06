@@ -20,6 +20,8 @@ BUILD = ROOT / "build"
 RUNTIME_STAGE = BUILD / "package-runtime"
 RUNTIME_BIN = RUNTIME_STAGE / "bin"
 RUNTIME_FILES = ("akvc_helper.exe", "akvc-dshow.dll", "akvc-mf.dll")
+SOURCE_RUNTIME_BIN = ROOT / "akvc" / "_runtime" / "windows"
+SOURCE_NATIVE_DIR = ROOT / "akvc"
 
 
 def _run_make(*args: str) -> None:
@@ -51,6 +53,21 @@ def _copy_native_extension(target_dir: Path) -> None:
         raise RuntimeError("missing staged native extension: _core_native*.pyd")
 
 
+def _has_source_runtime() -> bool:
+    return all((SOURCE_RUNTIME_BIN / name).is_file() for name in RUNTIME_FILES)
+
+
+def _has_source_native_extension() -> bool:
+    return any(SOURCE_NATIVE_DIR.glob("_core_native*.pyd"))
+
+
+def _ensure_editable_runtime_ready() -> None:
+    if _has_source_runtime() and _has_source_native_extension():
+        return
+    _stage_windows_runtime()
+    _copy_native_extension(SOURCE_NATIVE_DIR)
+
+
 class build_py(_build_py):
     def run(self) -> None:
         super().run()
@@ -70,8 +87,7 @@ if _editable_wheel is not None:
 
     class editable_wheel(_editable_wheel):
         def run(self) -> None:
-            _stage_windows_runtime()
-            _copy_native_extension(ROOT / "akvc")
+            _ensure_editable_runtime_ready()
             super().run()
 
     CMDCLASS = {

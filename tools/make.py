@@ -258,6 +258,12 @@ MACOS_PROJECT_YML = MACOS_ROOT / "project.yml"
 BUILD_PYTHON_STAMP = BUILD / ".python-executable"
 
 
+def _resolved_python_identity() -> Path:
+    base = getattr(sys, "_base_executable", None)
+    candidate = Path(base) if base else Path(sys.executable)
+    return candidate.resolve()
+
+
 def _cmake_args(source: Path, build: Path) -> list[str]:
     args = ["cmake", "-G", CMAKE_GENERATOR]
     # The -A option is only valid for Visual Studio generators.
@@ -322,7 +328,7 @@ def _purge_stale_cmake_cache(build_dir: Path) -> None:
     """
     cache = build_dir / "CMakeCache.txt"
     stamp = BUILD_PYTHON_STAMP
-    current_python = str(Path(sys.executable).resolve())
+    current_python = str(_resolved_python_identity())
     if cache.exists() and not stamp.exists():
         print(f"[make] purging stale build cache (missing Python stamp): {build_dir}")
         shutil.rmtree(build_dir, ignore_errors=True)
@@ -720,7 +726,7 @@ def cmd_configure(_: argparse.Namespace) -> int:
     _purge_stale_cmake_cache(BUILD)
     rc = _run(_cmake_args(ROOT, BUILD), env=_build_env())
     if rc == 0:
-        BUILD_PYTHON_STAMP.write_text(str(Path(sys.executable).resolve()), encoding="utf-8")
+        BUILD_PYTHON_STAMP.write_text(str(_resolved_python_identity()), encoding="utf-8")
     return rc
 
 
