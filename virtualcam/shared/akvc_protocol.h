@@ -116,6 +116,10 @@ typedef struct akvc_ring_control {
 #define AKVC_SHM_NAME       "Global\\akvc-frames-v1"
 #define AKVC_EVENT_NAME     "Global\\akvc-frames-evt-v1"
 #define AKVC_MUTEX_NAME     "Global\\akvc-frames-mtx-v1"
+#define AKVC_FRAMEBUS_PATH_ENV "AKVC_FRAMEBUS_PATH"
+#define AKVC_FRAMEBUS_DIR_ENV  "AKVC_FRAMEBUS_DIR"
+#define AKVC_FRAMEBUS_DEFAULT_SUBDIR "AKVirtualCamera"
+#define AKVC_FRAMEBUS_DEFAULT_FILE   "akvc-frames-v1.bin"
 
 /* Helper service control pipe (Windows). */
 #define AKVC_HELPER_PIPE    "\\\\.\\pipe\\akvc-helper-ctrl"

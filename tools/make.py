@@ -300,6 +300,13 @@ MACOS_HEADLESS_DMG_TOKENS = (
     "device not configured",
     "设备未配置",
 )
+BUILD_PYTHON_STAMP = BUILD / ".python-executable"
+
+
+def _resolved_python_identity() -> Path:
+    base = getattr(sys, "_base_executable", None)
+    candidate = Path(base) if base else Path(sys.executable)
+    return candidate.resolve()
 
 
 def _cmake_args(source: Path, build: Path) -> list[str]:
@@ -307,7 +314,10 @@ def _cmake_args(source: Path, build: Path) -> list[str]:
     # The -A option is only valid for Visual Studio generators.
     if CMAKE_GENERATOR.startswith("Visual Studio"):
         args += ["-A", CMAKE_PLATFORM]
-    args += ["-S", str(source), "-B", str(build)]
+    args += [
+        "-S", str(source), "-B", str(build),
+        f"-DPython3_EXECUTABLE={sys.executable}",
+    ]
     return args
 
 
@@ -389,19 +399,45 @@ def _purge_stale_cmake_cache(build_dir: Path) -> None:
     We detect by reading CMAKE_GENERATOR:INTERNAL out of CMakeCache.txt.
     """
     cache = build_dir / "CMakeCache.txt"
+    stamp = BUILD_PYTHON_STAMP
+    current_python = str(_resolved_python_identity())
+    if cache.exists() and not stamp.exists():
+        print(f"[make] purging stale build cache (missing Python stamp): {build_dir}")
+        shutil.rmtree(build_dir, ignore_errors=True)
+        return
+    if stamp.exists():
+        stamped_python = stamp.read_text(encoding="utf-8", errors="ignore").strip()
+        if stamped_python and Path(stamped_python) != Path(current_python):
+            print(
+                f"[make] purging stale build cache "
+                f"(Python was '{stamped_python}', now '{current_python}'): {build_dir}"
+            )
+            shutil.rmtree(build_dir, ignore_errors=True)
+            return
     if not cache.exists():
         return
     try:
+        generator = None
+        python_executable = None
         for line in cache.read_text(encoding="utf-8", errors="ignore").splitlines():
             if line.startswith("CMAKE_GENERATOR:INTERNAL="):
-                existing = line.split("=", 1)[1].strip()
-                if existing and existing != CMAKE_GENERATOR:
-                    print(
-                        f"[make] purging stale CMake cache "
-                        f"(was '{existing}', now '{CMAKE_GENERATOR}'): {build_dir}"
-                    )
-                    shutil.rmtree(build_dir, ignore_errors=True)
-                return
+                generator = line.split("=", 1)[1].strip()
+            elif line.startswith("Python3_EXECUTABLE:FILEPATH="):
+                python_executable = line.split("=", 1)[1].strip()
+        if generator and generator != CMAKE_GENERATOR:
+            print(
+                f"[make] purging stale CMake cache "
+                f"(was '{generator}', now '{CMAKE_GENERATOR}'): {build_dir}"
+            )
+            shutil.rmtree(build_dir, ignore_errors=True)
+            return
+        if python_executable and Path(python_executable) != Path(current_python):
+            print(
+                f"[make] purging stale CMake cache "
+                f"(Python was '{python_executable}', now '{current_python}'): {build_dir}"
+            )
+            shutil.rmtree(build_dir, ignore_errors=True)
+            return
     except Exception:
         # If anything goes wrong reading, err on the side of purging.
         shutil.rmtree(build_dir, ignore_errors=True)
@@ -698,6 +734,7 @@ def _build_baseclasses() -> None:
 
 def _ensure_windows_build_configured(args: argparse.Namespace) -> int:
     _check_windows()
+    _purge_stale_cmake_cache(BUILD)
     if not (BUILD / "CMakeCache.txt").exists():
         rc = cmd_configure(args)
         if rc != 0:
@@ -759,7 +796,10 @@ def cmd_configure(_: argparse.Namespace) -> int:
     _build_baseclasses()
     BUILD.mkdir(exist_ok=True)
     _purge_stale_cmake_cache(BUILD)
-    return _run(_cmake_args(ROOT, BUILD), env=_build_env())
+    rc = _run(_cmake_args(ROOT, BUILD), env=_build_env())
+    if rc == 0:
+        BUILD_PYTHON_STAMP.write_text(str(_resolved_python_identity()), encoding="utf-8")
+    return rc
 
 
 def cmd_build(args: argparse.Namespace) -> int:

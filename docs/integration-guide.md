@@ -1,6 +1,6 @@
 # 集成 AK Virtual Camera 到你的 PySide6 项目
 
-推荐安装方式：直接从仓库根安装（Python 3.11–3.12）。
+推荐安装方式：直接从仓库根安装（Python 3.11–3.14）。
 
 ```bash
 pip install <repo-url>

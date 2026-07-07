@@ -28,6 +28,14 @@ def test_protocol_offsets_are_native_backed() -> None:
     assert int(NativeFrameBusProtocol["FRAME_HEADER_OFF_SEQ_TAIL"]) >= 0
 
 
+def test_protocol_exposes_framebus_backing_configuration() -> None:
+    assert NativeFrameBusProtocol["FRAMEBUS_PATH_ENV"] == "AKVC_FRAMEBUS_PATH"
+    assert NativeFrameBusProtocol["FRAMEBUS_DIR_ENV"] == "AKVC_FRAMEBUS_DIR"
+    assert NativeFrameBusProtocol["FRAMEBUS_DEFAULT_SUBDIR"] == "AKVirtualCamera"
+    assert NativeFrameBusProtocol["FRAMEBUS_DEFAULT_FILE"] == "akvc-frames-v1.bin"
+    assert str(NativeFrameBusProtocol["FRAMEBUS_DEFAULT_PATH"]).endswith("akvc-frames-v1.bin")
+
+
 def test_protocol_format_strings_remain_python_pack_compatible() -> None:
     assert struct.calcsize(RING_CONTROL_FMT) == int(NativeFrameBusProtocol["RING_CONTROL_SIZE"])
     assert struct.calcsize(FRAME_HEADER_FMT) == int(NativeFrameBusProtocol["FRAME_HEADER_SIZE"])

@@ -35,6 +35,8 @@ MACOS_RUNTIME_FILES = (
     "libakvc-macos-direct-sender.dylib",
     "VirtualCamera.pkg",
 )
+SOURCE_RUNTIME_BIN = ROOT / "akvc" / "_runtime" / "windows"
+SOURCE_NATIVE_DIR = ROOT / "akvc"
 
 
 def _run_make(*args: str) -> None:
@@ -56,6 +58,43 @@ def _stage_windows_runtime() -> Path | None:
     if missing:
         raise RuntimeError(f"missing staged runtime artifacts: {', '.join(missing)}")
     return RUNTIME_BIN
+
+
+def _copy_runtime_tree(source_dir: Path, target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for source in source_dir.iterdir():
+        if source.is_dir():
+            shutil.copytree(source, target_dir / source.name, dirs_exist_ok=True)
+        elif source.is_file():
+            shutil.copy2(source, target_dir / source.name)
+
+
+def _copy_native_extension(target_dir: Path) -> None:
+    staged_native = RUNTIME_STAGE / "akvc"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    copied = False
+    for artifact in staged_native.glob("_core_native*.pyd"):
+        shutil.copy2(artifact, target_dir / artifact.name)
+        if artifact.name != "_core_native.pyd":
+            shutil.copy2(artifact, target_dir / "_core_native.pyd")
+        copied = True
+    if not copied:
+        raise RuntimeError("missing staged native extension: _core_native*.pyd")
+
+
+def _has_source_runtime() -> bool:
+    return all((SOURCE_RUNTIME_BIN / name).is_file() for name in RUNTIME_FILES)
+
+
+def _has_source_native_extension() -> bool:
+    return any(SOURCE_NATIVE_DIR.glob("_core_native*.pyd"))
+
+
+def _ensure_editable_runtime_ready() -> None:
+    if _has_source_runtime() and _has_source_native_extension():
+        return
+    _stage_windows_runtime()
+    _copy_native_extension(SOURCE_NATIVE_DIR)
 
 
 def _maybe_build_macos_runtime() -> None:
@@ -116,15 +155,6 @@ def _stage_macos_runtime() -> Path | None:
     return MACOS_RUNTIME_STAGE
 
 
-def _copy_runtime_tree(source_dir: Path, target_dir: Path) -> None:
-    target_dir.mkdir(parents=True, exist_ok=True)
-    for source in source_dir.iterdir():
-        if source.is_dir():
-            shutil.copytree(source, target_dir / source.name, dirs_exist_ok=True)
-        elif source.is_file():
-            shutil.copy2(source, target_dir / source.name)
-
-
 class build_py(_build_py):
     def run(self) -> None:
         super().run()
@@ -133,6 +163,7 @@ class build_py(_build_py):
         if runtime_bin is not None:
             target_dir = Path(self.build_lib) / "akvc" / "_runtime" / "windows"
             _copy_runtime_tree(runtime_bin, target_dir)
+            _copy_native_extension(Path(self.build_lib) / "akvc")
 
         macos_runtime = _stage_macos_runtime()
         if macos_runtime is not None:
@@ -144,7 +175,7 @@ if _editable_wheel is not None:
 
     class editable_wheel(_editable_wheel):
         def run(self) -> None:
-            _stage_windows_runtime()
+            _ensure_editable_runtime_ready()
             _stage_macos_runtime()
             super().run()
 

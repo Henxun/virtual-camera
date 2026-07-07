@@ -215,14 +215,29 @@ public:
 #endif
     }
 
-    bool start_installed(const std::wstring& task_name = DEFAULT_TASK_NAME) {
+    bool start_installed(const std::wstring& task_name = DEFAULT_TASK_NAME,
+                         double timeout_s = START_TIMEOUT_S) {
 #ifdef _WIN32
         last_launch_error_.clear();
         const std::wstring task = task_name.empty() ? std::wstring(DEFAULT_TASK_NAME) : task_name;
         std::wstring args = L"/run /tn " + quote_for_cmd(task);
-        return run_schtasks(args, false);
+        if (!run_schtasks(args, false)) {
+            return false;
+        }
+        if (wait_for_ping(timeout_s)) {
+            last_error_message_.clear();
+            return true;
+        }
+        if (last_error_message_.empty()) {
+            std::ostringstream oss;
+            oss << "Installed AKVC helper task " << to_string(task)
+                << " started but did not expose pipe in time.";
+            last_error_message_ = oss.str();
+        }
+        return false;
 #else
         (void)task_name;
+        (void)timeout_s;
         throw std::runtime_error("Windows helper client is only available on Windows");
 #endif
     }
@@ -251,30 +266,38 @@ public:
         }
 
         const std::wstring task = task_name.empty() ? std::wstring(DEFAULT_TASK_NAME) : to_wstring(task_name);
-        if (scheduled_task_exists(task) && start_installed(task)) {
-            if (wait_for_ping(START_TIMEOUT_S)) {
+        std::string installed_task_error;
+        if (scheduled_task_exists(task)) {
+            if (start_installed(task, START_TIMEOUT_S)) {
                 last_error_message_.clear();
                 return true;
             }
-            if (last_error_message_.empty()) {
-                std::ostringstream oss;
-                oss << "Installed AKVC helper task " << to_string(task)
-                    << " started but did not expose pipe in time.";
-                last_error_message_ = oss.str();
-            }
-            return false;
+            installed_task_error = last_error_message_;
         }
 
         const std::wstring exe = helper_exe.empty() ? std::wstring() : to_wstring(helper_exe);
         if (exe.empty()) {
-            last_error_message_ =
-                "AKVC helper executable not found. Ensure akvc/_runtime/windows/akvc_helper.exe is packaged with the application or set AKVC_HELPER_EXE explicitly.";
+            if (!installed_task_error.empty()) {
+                last_error_message_ = installed_task_error;
+            } else {
+                last_error_message_ =
+                    "AKVC helper executable not found. Ensure akvc/_runtime/windows/akvc_helper.exe is packaged with the application or set AKVC_HELPER_EXE explicitly.";
+            }
             return false;
         }
         if (!launch(exe, ::GetCurrentProcessId(), default_log_path())) {
-            if (last_error_message_.empty()) {
-                describe_start_failure(exe);
+            if (installed_task_error.empty()) {
+                if (last_error_message_.empty()) {
+                    describe_start_failure(exe);
+                }
+                return false;
             }
+            const std::string direct_launch_error = last_error_message_.empty()
+                ? std::string("failed to direct-launch helper executable")
+                : last_error_message_;
+            std::ostringstream oss;
+            oss << installed_task_error << " Fallback direct launch also failed. " << direct_launch_error;
+            last_error_message_ = oss.str();
             return false;
         }
         if (wait_for_ping(START_TIMEOUT_S)) {
@@ -282,6 +305,11 @@ public:
             return true;
         }
         describe_start_failure(exe);
+        if (!installed_task_error.empty()) {
+            std::ostringstream oss;
+            oss << installed_task_error << " Fallback direct launch also failed. " << last_error_message_;
+            last_error_message_ = oss.str();
+        }
         return false;
 #else
         (void)helper_exe;
@@ -299,11 +327,9 @@ public:
             return true;
         }
         const std::wstring task = task_name.empty() ? std::wstring(DEFAULT_TASK_NAME) : to_wstring(task_name);
-        if (prefer_installed && scheduled_task_exists(task)) {
-            if (start_installed(task) && wait_for_ping(START_TIMEOUT_S)) {
-                last_error_message_.clear();
-                return true;
-            }
+        if (prefer_installed && scheduled_task_exists(task) && start_installed(task, START_TIMEOUT_S)) {
+            last_error_message_.clear();
+            return true;
         }
         return start_service(helper_exe, task_name);
 #else
@@ -637,7 +663,7 @@ void bind_windows_helper_client(py::module_& m) {
         .def("launch", &NativeWindowsHelperClient::launch, py::arg("exe_path"), py::arg("parent_pid"), py::arg("log_path"))
         .def("install_autostart", &NativeWindowsHelperClient::install_autostart, py::arg("exe_path"), py::arg("log_path"), py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
         .def("uninstall_autostart", &NativeWindowsHelperClient::uninstall_autostart, py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
-        .def("start_installed", &NativeWindowsHelperClient::start_installed, py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
+        .def("start_installed", &NativeWindowsHelperClient::start_installed, py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME), py::arg("timeout_s") = START_TIMEOUT_S)
         .def("scheduled_task_status", &NativeWindowsHelperClient::scheduled_task_status, py::arg("task_name") = std::wstring(DEFAULT_TASK_NAME))
         .def("start_service", &NativeWindowsHelperClient::start_service, py::arg("helper_exe") = std::string(), py::arg("task_name") = std::string())
         .def("ensure_running", &NativeWindowsHelperClient::ensure_running, py::arg("helper_exe") = std::string(), py::arg("task_name") = std::string(), py::arg("prefer_installed") = true)

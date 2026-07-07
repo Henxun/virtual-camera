@@ -11,25 +11,39 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from akvc_app.services.helper_service import (
+from akvc.helper_service import (
     DEFAULT_PERSISTENT_LOG,
     DEFAULT_TASK_NAME,
     HelperService,
 )
-from akvc_app.services.windows_runtime import find_dshow_dll
-from akvc.sdk.virtual_camera import VirtualCamera
-from akvc.platforms.macos.installer import (
-    describe_manual_app_validation_gates,
-    describe_runtime_topology,
-    evaluate_extension_readiness,
-    infer_extension_phase,
-    inspect_install_result,
-    load_manual_app_validation_summary,
-    open_macos_install_settings,
-)
+from akvc.runtime import find_dshow_dll
 
 CLSID = "{8E14549A-DB61-4309-AFA1-3578E927E933}"
-FRIENDLY_NAME = "AK Virtual Camera"
+
+def _load_macos_cli_bindings():
+    from akvc.sdk.virtual_camera import VirtualCamera
+    from akvc.platforms.macos.installer import (
+        describe_manual_app_validation_gates,
+        describe_runtime_topology,
+        evaluate_extension_readiness,
+        infer_extension_phase,
+        inspect_install_result,
+        load_manual_app_validation_summary,
+        open_macos_install_settings,
+    )
+
+    return {
+        "VirtualCamera": VirtualCamera,
+        "describe_manual_app_validation_gates": describe_manual_app_validation_gates,
+        "describe_runtime_topology": describe_runtime_topology,
+        "evaluate_extension_readiness": evaluate_extension_readiness,
+        "infer_extension_phase": infer_extension_phase,
+        "inspect_install_result": inspect_install_result,
+        "load_manual_app_validation_summary": load_manual_app_validation_summary,
+        "open_macos_install_settings": open_macos_install_settings,
+    }
+
+
 
 
 def _print_json(payload: dict) -> None:
@@ -48,10 +62,11 @@ def _print_key_values(payload: dict) -> None:
 
 
 def _merge_manual_app_validation_payload(payload: dict) -> None:
-    summary = load_manual_app_validation_summary()
-    failed_labels = describe_manual_app_validation_gates(summary.failed_criteria)
-    unknown_labels = describe_manual_app_validation_gates(summary.unknown_criteria)
-    blocker_labels = describe_manual_app_validation_gates(summary.blockers)
+    bindings = _load_macos_cli_bindings()
+    summary = bindings["load_manual_app_validation_summary"]()
+    failed_labels = bindings["describe_manual_app_validation_gates"](summary.failed_criteria)
+    unknown_labels = bindings["describe_manual_app_validation_gates"](summary.unknown_criteria)
+    blocker_labels = bindings["describe_manual_app_validation_gates"](summary.blockers)
     payload["manual_app_validation_present"] = summary.present
     payload["manual_app_validation_ready"] = summary.ready
     payload["manual_app_validation_failed_criteria"] = failed_labels
@@ -64,7 +79,8 @@ def _merge_manual_app_validation_payload(payload: dict) -> None:
 
 
 def _merge_runtime_topology_payload(payload: dict, status) -> None:
-    payload.update(describe_runtime_topology(status))
+    bindings = _load_macos_cli_bindings()
+    payload.update(bindings["describe_runtime_topology"](status))
 
 
 def _resolve_macos_container_app_overrides(args: argparse.Namespace) -> tuple[str | None, str | None]:
@@ -185,6 +201,10 @@ def cmd_unregister(args: argparse.Namespace) -> int:
 
 def cmd_status(args: argparse.Namespace) -> int:
     if sys.platform == "darwin":
+        bindings = _load_macos_cli_bindings()
+        VirtualCamera = bindings["VirtualCamera"]
+        infer_extension_phase = bindings["infer_extension_phase"]
+        evaluate_extension_readiness = bindings["evaluate_extension_readiness"]
         try:
             camera = VirtualCamera(**_macos_virtual_camera_kwargs(args))
         except ValueError as exc:
@@ -276,6 +296,9 @@ def cmd_install(args: argparse.Namespace) -> int:
         return 2
 
     try:
+        bindings = _load_macos_cli_bindings()
+        VirtualCamera = bindings["VirtualCamera"]
+        inspect_install_result = bindings["inspect_install_result"]
         camera = VirtualCamera(**_macos_virtual_camera_kwargs(args))
     except ValueError as exc:
         print(f"[akvc] {exc}", file=sys.stderr)
@@ -347,6 +370,9 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
         return 2
 
     try:
+        bindings = _load_macos_cli_bindings()
+        VirtualCamera = bindings["VirtualCamera"]
+        inspect_install_result = bindings["inspect_install_result"]
         camera = VirtualCamera(**_macos_virtual_camera_kwargs(args))
     except ValueError as exc:
         print(f"[akvc] {exc}", file=sys.stderr)
@@ -407,6 +433,8 @@ def cmd_sync_ipc(args: argparse.Namespace) -> int:
         return 2
 
     try:
+        bindings = _load_macos_cli_bindings()
+        VirtualCamera = bindings["VirtualCamera"]
         camera = VirtualCamera(**_macos_virtual_camera_kwargs(args))
     except ValueError as exc:
         print(f"[akvc] {exc}", file=sys.stderr)
@@ -438,13 +466,13 @@ def cmd_sync_ipc(args: argparse.Namespace) -> int:
 
 def cmd_open_settings(args: argparse.Namespace) -> int:
     del args
-    rc = open_macos_install_settings()
-    if rc == 0:
-        print("[akvc] opened System Settings.")
-        return 0
     if sys.platform != "darwin":
         print("[akvc] open-settings is macOS only.", file=sys.stderr)
         return 2
+    rc = _load_macos_cli_bindings()["open_macos_install_settings"]()
+    if rc == 0:
+        print("[akvc] opened System Settings.")
+        return 0
     print(f"[akvc] failed to open System Settings (rc={rc})", file=sys.stderr)
     return 1
 

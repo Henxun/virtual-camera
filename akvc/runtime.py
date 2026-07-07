@@ -12,12 +12,28 @@ from pathlib import Path
 _PACKAGE_ROOT = Path(__file__).resolve().parent
 _PACKAGE_WINDOWS_RUNTIME_DIR = _PACKAGE_ROOT / "_runtime" / "windows"
 _PACKAGE_MACOS_RUNTIME_DIR = _PACKAGE_ROOT / "_runtime" / "macos"
+_DEFAULT_PACKAGE_WINDOWS_RUNTIME_DIR = _PACKAGE_WINDOWS_RUNTIME_DIR
+_DEFAULT_PACKAGE_MACOS_RUNTIME_DIR = _PACKAGE_MACOS_RUNTIME_DIR
 _STAGED_WINDOWS_RUNTIME_DIR = Path(__file__).resolve().parents[1] / "build" / "package-runtime" / "bin"
 _STAGED_MACOS_RUNTIME_DIR = Path(__file__).resolve().parents[1] / "build" / "package-runtime" / "macos"
-_PACKAGE_RUNTIME_DIR = _PACKAGE_WINDOWS_RUNTIME_DIR
 _STAGED_RUNTIME_DIR = _STAGED_WINDOWS_RUNTIME_DIR
 _APPLICATIONS_DIR = Path("/Applications")
 _MACOS_EXTENSION_BUNDLE_NAME = "com.sidus.amaran-desktop.cameraextension.systemextension"
+
+
+def _package_windows_runtime_dir() -> Path:
+    if _PACKAGE_WINDOWS_RUNTIME_DIR != _DEFAULT_PACKAGE_WINDOWS_RUNTIME_DIR:
+        return _PACKAGE_WINDOWS_RUNTIME_DIR
+    return _PACKAGE_ROOT / "_runtime" / "windows"
+
+
+def _package_macos_runtime_dir() -> Path:
+    if _PACKAGE_MACOS_RUNTIME_DIR != _DEFAULT_PACKAGE_MACOS_RUNTIME_DIR:
+        return _PACKAGE_MACOS_RUNTIME_DIR
+    return _PACKAGE_ROOT / "_runtime" / "macos"
+
+
+_PACKAGE_RUNTIME_DIR = _PACKAGE_WINDOWS_RUNTIME_DIR
 
 
 def _resource_path(relative_path: str) -> Path | None:
@@ -174,12 +190,15 @@ def _find_file_asset(
             if path.is_file():
                 return path
 
-    if packaged_dir in {_PACKAGE_WINDOWS_RUNTIME_DIR, _PACKAGE_RUNTIME_DIR} and resource_path is not None:
+    package_windows_runtime_dir = _package_windows_runtime_dir()
+    package_macos_runtime_dir = _package_macos_runtime_dir()
+
+    if packaged_dir in {package_windows_runtime_dir, _PACKAGE_RUNTIME_DIR} and resource_path is not None:
         staged = _STAGED_RUNTIME_DIR / Path(resource_path).name
         if staged.is_file():
             return staged
 
-    if packaged_dir is _PACKAGE_MACOS_RUNTIME_DIR and resource_path is not None:
+    if packaged_dir == package_macos_runtime_dir and resource_path is not None:
         staged = _STAGED_MACOS_RUNTIME_DIR / Path(resource_path).name
         if staged.is_file():
             return staged
@@ -190,9 +209,11 @@ def _find_file_asset(
             return staged
 
     if resource_path is not None:
-        packaged = _resource_path(resource_path)
-        if packaged is not None:
-            return packaged
+        package_candidate = _PACKAGE_ROOT / resource_path
+        if packaged_dir is None or package_candidate == packaged_dir / Path(resource_path).name:
+            packaged = _resource_path(resource_path)
+            if packaged is not None:
+                return packaged
 
     return None
 
@@ -245,7 +266,7 @@ def find_macos_status_tool(explicit: str | Path | None = None) -> Path | None:
         explicit=explicit,
         env_var="AKVC_MACOS_STATUS_TOOL",
         resource_path=_macos_runtime_relpath("akvc-macos-status"),
-        packaged_dir=_PACKAGE_MACOS_RUNTIME_DIR,
+        packaged_dir=_package_macos_runtime_dir(),
         build_relpaths=[
             "akvc/_runtime/macos/akvc-macos-status",
             "camera-core/src/akvc/_runtime/macos/akvc-macos-status",
@@ -258,7 +279,7 @@ def find_macos_install_tool(explicit: str | Path | None = None) -> Path | None:
         explicit=explicit,
         env_var="AKVC_MACOS_INSTALL_TOOL",
         resource_path=_macos_runtime_relpath("akvc-macos-install"),
-        packaged_dir=_PACKAGE_MACOS_RUNTIME_DIR,
+        packaged_dir=_package_macos_runtime_dir(),
         build_relpaths=[
             "akvc/_runtime/macos/akvc-macos-install",
             "camera-core/src/akvc/_runtime/macos/akvc-macos-install",
@@ -271,7 +292,7 @@ def find_macos_list_devices_tool(explicit: str | Path | None = None) -> Path | N
         explicit=explicit,
         env_var="AKVC_MACOS_LIST_DEVICES_TOOL",
         resource_path=_macos_runtime_relpath("akvc-macos-list-devices"),
-        packaged_dir=_PACKAGE_MACOS_RUNTIME_DIR,
+        packaged_dir=_package_macos_runtime_dir(),
         build_relpaths=[
             "akvc/_runtime/macos/akvc-macos-list-devices",
             "camera-core/src/akvc/_runtime/macos/akvc-macos-list-devices",
@@ -284,7 +305,7 @@ def find_macos_sync_ipc_tool(explicit: str | Path | None = None) -> Path | None:
         explicit=explicit,
         env_var="AKVC_MACOS_SYNC_IPC_TOOL",
         resource_path=_macos_runtime_relpath("akvc-macos-sync-ipc"),
-        packaged_dir=_PACKAGE_MACOS_RUNTIME_DIR,
+        packaged_dir=_package_macos_runtime_dir(),
         build_relpaths=[
             "akvc/_runtime/macos/akvc-macos-sync-ipc",
             "camera-core/src/akvc/_runtime/macos/akvc-macos-sync-ipc",
@@ -297,7 +318,7 @@ def find_macos_direct_sender_library(explicit: str | Path | None = None) -> Path
         explicit=explicit,
         env_var="AKVC_MACOS_DIRECT_SENDER_LIB",
         resource_path=_macos_runtime_relpath("libakvc-macos-direct-sender.dylib"),
-        packaged_dir=_PACKAGE_MACOS_RUNTIME_DIR,
+        packaged_dir=_package_macos_runtime_dir(),
         build_relpaths=[
             "akvc/_runtime/macos/libakvc-macos-direct-sender.dylib",
             "camera-core/src/akvc/_runtime/macos/libakvc-macos-direct-sender.dylib",
@@ -310,7 +331,7 @@ def find_macos_uninstall_tool(explicit: str | Path | None = None) -> Path | None
         explicit=explicit,
         env_var="AKVC_MACOS_UNINSTALL_TOOL",
         resource_path=_macos_runtime_relpath("akvc-macos-uninstall"),
-        packaged_dir=_PACKAGE_MACOS_RUNTIME_DIR,
+        packaged_dir=_package_macos_runtime_dir(),
         build_relpaths=[
             "akvc/_runtime/macos/akvc-macos-uninstall",
             "camera-core/src/akvc/_runtime/macos/akvc-macos-uninstall",
@@ -323,7 +344,7 @@ def find_macos_pkg(explicit: str | Path | None = None) -> Path | None:
         explicit=explicit,
         env_var="AKVC_MACOS_PKG",
         resource_path=_macos_runtime_relpath("VirtualCamera.pkg"),
-        packaged_dir=_PACKAGE_MACOS_RUNTIME_DIR,
+        packaged_dir=_package_macos_runtime_dir(),
         build_relpaths=[
             "akvc/_runtime/macos/VirtualCamera.pkg",
             "camera-core/src/akvc/_runtime/macos/VirtualCamera.pkg",
@@ -335,7 +356,7 @@ def find_macos_extension_bundle(explicit: str | Path | None = None) -> Path | No
     return _find_directory_asset(
         explicit=explicit,
         env_var="AKVC_MACOS_EXTENSION_BUNDLE",
-        packaged_dir=_PACKAGE_MACOS_RUNTIME_DIR,
+        packaged_dir=_package_macos_runtime_dir(),
         build_relpaths=[
             f"akvc/_runtime/macos/{_MACOS_EXTENSION_BUNDLE_NAME}",
             f"camera-core/src/akvc/_runtime/macos/{_MACOS_EXTENSION_BUNDLE_NAME}",

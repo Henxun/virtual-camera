@@ -10,7 +10,7 @@ set(AKVC_HELPER_SRC
     src/main.cpp
 )
 
-add_executable(akvc_helper ${AKVC_HELPER_SRC})
+add_executable(akvc_helper WIN32 ${AKVC_HELPER_SRC})
 
 target_include_directories(akvc_helper PRIVATE
     include
@@ -31,6 +31,10 @@ target_link_libraries(akvc_helper PRIVATE
 set_target_properties(akvc_helper PROPERTIES
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
+
+if(MSVC)
+    target_link_options(akvc_helper PRIVATE /ENTRY:wmainCRTStartup)
+endif()
 
 install(TARGETS akvc_helper
         RUNTIME DESTINATION bin)

@@ -103,13 +103,16 @@ public:
     void DeliverSample(IMFSample* sample);
     bool IsShutdown() const { return shutdown_; }
 
-    // Build an IMFSample from a Frame Bus frame view. Uses the frame-server
-    // allocator (2D buffer) if available, else a plain memory buffer.
+    // Build an IMFSample from a Frame Bus frame view. This path is
+    // intentionally fail-closed: we only return a sample when the frame
+    // server has provided an allocator-backed 2D buffer that we can fill with
+    // NV12 data safely for Frame Server / Chrome consumption.
     bool BuildSample(const akvc::FrameView& fv, IMFSample** out);
 
     // Sample allocator provided by the frame server (via
-    // IMFSampleAllocatorControl::SetDefaultAllocator). When set, RequestSample
-    // uses it to allocate a 2D buffer that the frame server can render.
+    // IMFSampleAllocatorControl::SetDefaultAllocator). RequestSample relies on
+    // this allocator to obtain a 2D buffer with the correct stride/layout for
+    // Frame Server rendering.
     void SetAllocator(IUnknown* allocator);
     IMFSampleAllocatorControl* GetAllocatorControl() { return allocator_control_; }
     void SetAllocatorControl(IMFSampleAllocatorControl* c) { allocator_control_ = c; }

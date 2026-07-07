@@ -273,84 +273,86 @@ STDMETHODIMP MediaStream::RequestSample(IUnknown* token) {
 
 bool MediaStream::BuildSample(const FrameView& fv, IMFSample** out) {
     *out = nullptr;
-    DWORD buf_size = fv.header->plane_size[0] + fv.header->plane_size[1];
     UINT32 h = fv.header->height;
     UINT32 w = fv.header->width;
 
-    // Prefer the frame-server-provided allocator (creates a 2D NV12 buffer
-    // with the correct stride that the frame server can render directly).
-    if (allocator_) {
-        Log("MediaStream::BuildSample using allocator");
-        IMFSample* sample = nullptr;
-        if (SUCCEEDED(allocator_->AllocateSample(&sample)) && sample) {
-            IMFMediaBuffer* buf = nullptr;
-            if (SUCCEEDED(sample->GetBufferByIndex(0, &buf)) && buf) {
-                IMF2DBuffer2* buf2d = nullptr;
-                if (SUCCEEDED(buf->QueryInterface(&buf2d)) && buf2d) {
-                    BYTE* scanline0 = nullptr;
-                    LONG pitch = 0;
-                    BYTE* data = nullptr;
-                    DWORD len = 0;
-                    if (SUCCEEDED(buf2d->Lock2DSize(MF2DBuffer_LockFlags_Write,
-                                                     &scanline0, &pitch, &data, &len))) {
-                        Log("MediaStream::BuildSample 2D pitch=%ld len=%lu w=%u h=%u psize0=%u psize1=%u",
-                            pitch, len, w, h, fv.header->plane_size[0], fv.header->plane_size[1]);
-                        if (pitch >= (LONG)w) {
-                            // Y plane (row by row, respecting pitch).
-                            if (fv.plane0) {
-                                for (UINT32 y = 0; y < h; ++y)
-                                    std::memcpy(scanline0 + y * pitch,
-                                                fv.plane0 + y * w, w);
-                            }
-                            // UV plane (interleaved, half height).
-                            if (fv.plane1) {
-                                BYTE* uv = scanline0 + (LONG)(pitch * h);
-                                for (UINT32 y = 0; y < h / 2; ++y)
-                                    std::memcpy(uv + y * pitch,
-                                                fv.plane1 + y * w, w);
-                            }
-                        } else {
-                            Log("MediaStream::BuildSample pitch < width, skipping copy");
-                        }
-                        buf2d->Unlock2D();
-                    } else {
-                        Log("MediaStream::BuildSample Lock2DSize FAILED");
-                    }
-                    buf2d->Release();
-                } else {
-                    Log("MediaStream::BuildSample QI IMF2DBuffer2 FAILED");
-                }
-                buf->Release();
-            }
-            *out = sample;
-            Log("MediaStream::BuildSample allocator sample built OK");
-            return true;
-        }
+    if (!allocator_) {
+        Log("MediaStream::BuildSample allocator not set; refusing to build fallback sample");
+        return false;
     }
 
-    // Fallback: plain 1D memory buffer (contiguous Y || UV).
+    Log("MediaStream::BuildSample using allocator fourcc=0x%08x w=%u h=%u psize0=%u psize1=%u flags=0x%08x",
+        fv.header->fourcc, w, h, fv.header->plane_size[0], fv.header->plane_size[1], fv.header->flags);
+
     IMFSample* sample = nullptr;
-    if (FAILED(MFCreateSample(&sample))) return false;
-    IMFMediaBuffer* buffer = nullptr;
-    if (FAILED(MFCreateMemoryBuffer(buf_size, &buffer))) {
+    HRESULT alloc_hr = allocator_->AllocateSample(&sample);
+    if (FAILED(alloc_hr) || !sample) {
+        Log("MediaStream::BuildSample AllocateSample FAILED hr=0x%08lx", alloc_hr);
+        return false;
+    }
+
+    IMFMediaBuffer* buf = nullptr;
+    HRESULT buf_hr = sample->GetBufferByIndex(0, &buf);
+    if (FAILED(buf_hr) || !buf) {
+        Log("MediaStream::BuildSample GetBufferByIndex FAILED hr=0x%08lx", buf_hr);
         sample->Release();
         return false;
     }
+
+    IMF2DBuffer2* buf2d = nullptr;
+    HRESULT qhr = buf->QueryInterface(&buf2d);
+    if (FAILED(qhr) || !buf2d) {
+        Log("MediaStream::BuildSample QI IMF2DBuffer2 FAILED hr=0x%08lx", qhr);
+        buf->Release();
+        sample->Release();
+        return false;
+    }
+
+    BYTE* scanline0 = nullptr;
+    LONG pitch = 0;
     BYTE* data = nullptr;
-    if (FAILED(buffer->Lock(&data, nullptr, nullptr))) {
-        buffer->Release();
+    DWORD len = 0;
+    HRESULT lock_hr = buf2d->Lock2DSize(MF2DBuffer_LockFlags_Write,
+                                        &scanline0, &pitch, &data, &len);
+    if (FAILED(lock_hr) || !scanline0) {
+        Log("MediaStream::BuildSample Lock2DSize FAILED hr=0x%08lx", lock_hr);
+        buf2d->Release();
+        buf->Release();
         sample->Release();
         return false;
     }
-    if (fv.plane0 && fv.header->plane_size[0] > 0)
-        std::memcpy(data, fv.plane0, fv.header->plane_size[0]);
-    if (fv.plane1 && fv.header->plane_size[1] > 0)
-        std::memcpy(data + fv.header->plane_size[0], fv.plane1, fv.header->plane_size[1]);
-    buffer->Unlock();
-    buffer->SetCurrentLength(buf_size);
-    sample->AddBuffer(buffer);
-    buffer->Release();
+
+    Log("MediaStream::BuildSample 2D pitch=%ld len=%lu w=%u h=%u psize0=%u psize1=%u",
+        pitch, len, w, h, fv.header->plane_size[0], fv.header->plane_size[1]);
+
+    bool copied = false;
+    if (pitch < static_cast<LONG>(w)) {
+        Log("MediaStream::BuildSample pitch < width (%ld < %u)", pitch, w);
+    } else if (!fv.plane0 || !fv.plane1) {
+        Log("MediaStream::BuildSample missing frame planes plane0=%p plane1=%p",
+            static_cast<const void*>(fv.plane0), static_cast<const void*>(fv.plane1));
+    } else {
+        for (UINT32 y = 0; y < h; ++y) {
+            std::memcpy(scanline0 + y * pitch, fv.plane0 + y * w, w);
+        }
+        BYTE* uv = scanline0 + (LONG)(pitch * h);
+        for (UINT32 y = 0; y < h / 2; ++y) {
+            std::memcpy(uv + y * pitch, fv.plane1 + y * w, w);
+        }
+        copied = true;
+    }
+
+    buf2d->Unlock2D();
+    buf2d->Release();
+    buf->Release();
+
+    if (!copied) {
+        sample->Release();
+        return false;
+    }
+
     *out = sample;
+    Log("MediaStream::BuildSample allocator sample built OK");
     return true;
 }
 
@@ -461,7 +463,8 @@ STDMETHODIMP MediaSource::QueueEvent(MediaEventType type, REFGUID ext, HRESULT s
 }
 
 STDMETHODIMP MediaSource::CreatePresentationDescriptor(IMFPresentationDescriptor** out) {
-    Log("MediaSource::CreatePresentationDescriptor");
+    Log("MediaSource::CreatePresentationDescriptor pd=%p stream=%p started=%d shutdown=%d",
+        (void*)presentation_desc_, (void*)stream_, started_ ? 1 : 0, shutdown_ ? 1 : 0);
     if (!out) return E_POINTER;
     if (shutdown_) return MF_E_SHUTDOWN;
     if (!presentation_desc_) return MF_E_NOT_INITIALIZED;
@@ -605,7 +608,8 @@ STDMETHODIMP MediaSource::SetDefaultAllocator(DWORD dwOutputStreamID, IUnknown* 
 
 STDMETHODIMP MediaSource::Start(IMFPresentationDescriptor* desc,
                                  const GUID*, const PROPVARIANT*) {
-    Log("MediaSource::Start CALLED");
+    Log("MediaSource::Start CALLED desc=%p pd=%p stream=%p started=%d shutdown=%d",
+        (void*)desc, (void*)presentation_desc_, (void*)stream_, started_ ? 1 : 0, shutdown_ ? 1 : 0);
     if (shutdown_) return MF_E_SHUTDOWN;
 
     // Open Frame Bus (created by Helper process).

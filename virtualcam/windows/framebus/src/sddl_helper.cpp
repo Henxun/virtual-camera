@@ -15,6 +15,7 @@ std::wstring build_framebus_sddl() {
     // GA = generic all, GR = generic read, GW = generic write
     // BA = BUILTIN\Administrators
     // SY = LOCAL_SYSTEM
+    // LS = LOCAL_SERVICE
     // AC = ALL APPLICATION PACKAGES (legacy alias for AppContainer set)
     // S-1-15-2-1 = ALL_APP_PACKAGES well-known SID (Win8+)
     // S-1-15-2-2 = ALL_RESTRICTED_APP_PACKAGES (some MF LowBox containers)
@@ -22,6 +23,7 @@ std::wstring build_framebus_sddl() {
         L"D:"
         L"(A;;GA;;;BA)"
         L"(A;;GA;;;SY)"
+        L"(A;;GRGW;;;LS)"
         L"(A;;GA;;;AU)"         // Authenticated Users (UI + worker processes)
         L"(A;;GRGW;;;AC)"
         L"(A;;GRGW;;;S-1-15-2-1)"

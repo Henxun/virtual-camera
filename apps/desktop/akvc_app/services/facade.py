@@ -12,19 +12,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Callable, Optional
-
-from akvc.sdk.virtual_camera import VirtualCamera
-from akvc.platforms.macos.installer import (
-    describe_manual_app_validation_gates,
-    describe_runtime_topology,
-    ExtensionReadiness,
-    ExtensionInstallState,
-    ExtensionStatus,
-    evaluate_extension_readiness,
-    infer_extension_phase,
-    load_manual_app_validation_summary,
-    open_macos_install_settings,
-)
 try:
     from akvc._core_native import NativeRuntimeHost
 except ModuleNotFoundError:  # pragma: no cover - import-contract fallback
@@ -47,6 +34,29 @@ SettingsOpener = Callable[[], int]
 
 if TYPE_CHECKING:
     from akvc.core.frame_provider.base import ProviderInfo
+    from akvc.platforms.macos.installer import ExtensionReadiness, ExtensionStatus
+
+
+def _load_macos_facade_bindings():
+    from akvc.sdk.virtual_camera import VirtualCamera
+    from akvc.platforms.macos.installer import (
+        describe_manual_app_validation_gates,
+        describe_runtime_topology,
+        evaluate_extension_readiness,
+        infer_extension_phase,
+        load_manual_app_validation_summary,
+        open_macos_install_settings,
+    )
+
+    return {
+        "VirtualCamera": VirtualCamera,
+        "describe_manual_app_validation_gates": describe_manual_app_validation_gates,
+        "describe_runtime_topology": describe_runtime_topology,
+        "evaluate_extension_readiness": evaluate_extension_readiness,
+        "infer_extension_phase": infer_extension_phase,
+        "load_manual_app_validation_summary": load_manual_app_validation_summary,
+        "open_macos_install_settings": open_macos_install_settings,
+    }
 
 
 @dataclass(frozen=True)
@@ -67,13 +77,7 @@ _PATTERN_SOURCES = [
 
 
 def _default_settings_opener() -> int:
-    return open_macos_install_settings()
-
-
-def _list_usb_sources(max_probe: int = 4) -> list[Any]:
-    from akvc.core.frame_provider.usb import UsbCameraProvider
-
-    return UsbCameraProvider.list_devices(max_probe=max_probe)
+    return _load_macos_facade_bindings()["open_macos_install_settings"]()
 
 
 def _load_frame_worker_symbols():
@@ -199,7 +203,7 @@ class ServiceFacade:
         self._is_macos = sys.platform == "darwin"
         self._helper = HelperService() if self._is_windows else None
         self._mac_camera = (
-            VirtualCamera(**_current_macos_container_app_kwargs()) if self._is_macos else None
+            _load_macos_facade_bindings()["VirtualCamera"](**_current_macos_container_app_kwargs()) if self._is_macos else None
         )
         self._settings_opener = settings_opener
         self._device_registered = False
@@ -244,7 +248,7 @@ class ServiceFacade:
 
     def _discover_sources(self) -> list[Any]:
         try:
-            usb = _list_usb_sources(max_probe=4)
+            usb = list_usb_sources(max_probe=4)
         except Exception:  # pragma: no cover
             log.exception("usb probe failed")
             usb = []
@@ -360,7 +364,7 @@ class ServiceFacade:
         st.install_enabled = bool(status.enabled)
         st.supported_formats = list(supported_formats)
         st.supported_frame_rates = list(supported_frame_rates)
-        topology = describe_runtime_topology(status)
+        topology = _load_macos_facade_bindings()["describe_runtime_topology"](status)
         st.runtime_topology_kind = str(topology.get("runtime_topology_kind") or "")
         st.runtime_frame_path = str(topology.get("runtime_frame_path") or "")
         st.runtime_host_role = str(topology.get("runtime_host_role") or "")
@@ -394,15 +398,16 @@ class ServiceFacade:
                 ready=bool(readiness.ready),
                 status_text=readiness.message,
             )
-        summary = load_manual_app_validation_summary()
+        bindings = _load_macos_facade_bindings()
+        summary = bindings["load_manual_app_validation_summary"]()
         st.manual_app_validation_present = summary.present
         st.manual_app_validation_ready = summary.ready
         st.manual_app_validation_failed_criteria = list(summary.failed_criteria)
-        st.manual_app_validation_failed_labels = describe_manual_app_validation_gates(summary.failed_criteria)
+        st.manual_app_validation_failed_labels = bindings["describe_manual_app_validation_gates"](summary.failed_criteria)
         st.manual_app_validation_unknown_criteria = list(summary.unknown_criteria)
-        st.manual_app_validation_unknown_labels = describe_manual_app_validation_gates(summary.unknown_criteria)
+        st.manual_app_validation_unknown_labels = bindings["describe_manual_app_validation_gates"](summary.unknown_criteria)
         st.manual_app_validation_blockers = list(summary.blockers)
-        st.manual_app_validation_blocker_labels = describe_manual_app_validation_gates(summary.blockers)
+        st.manual_app_validation_blocker_labels = bindings["describe_manual_app_validation_gates"](summary.blockers)
         st.manual_app_validation_manifest_path = str(summary.manifest_path or "")
         st.can_open_settings = True
         dependency_ready, dependency_message = _probe_stream_dependencies()
@@ -426,10 +431,11 @@ class ServiceFacade:
         else:
             status = self._mac_camera.status()
             devices = list(self._mac_camera.enumerate_devices())
-            readiness = evaluate_extension_readiness(
+            bindings = _load_macos_facade_bindings()
+            readiness = bindings["evaluate_extension_readiness"](
                 status=status,
                 devices=devices,
-                phase=infer_extension_phase(
+                phase=bindings["infer_extension_phase"](
                     approval_required=bool(status.approval_required),
                     enabled=bool(status.enabled),
                     devices=devices,
@@ -460,7 +466,8 @@ class ServiceFacade:
             result = result_factory()
             status = result.status
             devices = list(result.enumerated_devices or status.devices)
-            readiness = evaluate_extension_readiness(
+            bindings = _load_macos_facade_bindings()
+            readiness = bindings["evaluate_extension_readiness"](
                 status=status,
                 devices=devices,
                 phase=result.phase,
