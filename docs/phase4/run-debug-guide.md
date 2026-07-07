@@ -10,9 +10,9 @@ Camera Extension 写 `os_log`，subsystem `com.akvc.camera-extension`：
 # 实时流
 log stream --predicate 'subsystem == "com.akvc.camera-extension"' --level debug
 
-# 含 host app
+# 含 container app / legacy host
 log stream --predicate \
-  'subsystem == "com.akvc.camera-extension" OR subsystem == "com.akvc.host"'
+  'subsystem == "com.akvc.camera-extension" OR subsystem == "com.sidus.amaran-desktop"'
 
 # 历史
 log show --predicate 'subsystem == "com.akvc.camera-extension"' --last 10m
@@ -34,7 +34,7 @@ Camera Extension 进程名通常是 `<bundle-id>` 形式的 helper。
 
 1. 构建签名（见 build-guide / signing runbook）。
 2. `systemextensionsctl developer on`（dev 一次性）。
-3. 运行 host app → 触发 `OSSystemExtensionRequest`。
+3. 运行 container app（或 legacy host target）→ 触发 `OSSystemExtensionRequest`。
 4. 系统设置 → 隐私与安全性 → 允许扩展。
 5. `log stream` 应见 `akvc.ext.provider.start`。
 6. 启动 Python 生产者：`python -m akvc_app`（macOS 路径）。

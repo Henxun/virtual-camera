@@ -7,7 +7,7 @@
 
 | 证书 | 用途 |
 |---|---|
-| **Developer ID Application** | 签名 `.app`（host）与 `.systemextension` |
+| **Developer ID Application** | 签名 container `.app` 与 `.systemextension` |
 | **Developer ID Installer** | （可选）打 `.pkg` 安装器 |
 
 在 Keychain Access 中确认证书存在，记下 Team ID（10 位，如 `ABCD1234EF`）。
@@ -39,14 +39,14 @@ codesign --force --deep --options runtime \
   --entitlements virtualcam/macos/CameraExtension/CameraExtension.entitlements \
   --sign "Developer ID Application: <Your Name> (<TEAMID>)" \
   --timestamp \
-  build/macos/Build/Products/Release/akvc-camera-extension.systemextension
+  build/macos/Build/Products/Release/com.sidus.amaran-desktop.cameraextension.systemextension
 
-# Host app（含 embedded extension）
+# Container app（含 embedded extension；legacy target 可能仍叫 `akvc-host.app`）
 codesign --force --deep --options runtime \
-  --entitlements virtualcam/macos/host/HostApp.entitlements \
+  --entitlements virtualcam/macos/demo_app/DemoApp.entitlements \
   --sign "Developer ID Application: <Your Name> (<TEAMID>)" \
   --timestamp \
-  build/macos/Build/Products/Release/akvc-host.app
+  build/macos/Build/Products/Release/<your-container-app>.app
 ```
 
 `--options runtime` = Hardened Runtime（公证前置条件）。
@@ -56,9 +56,9 @@ codesign --force --deep --options runtime \
 
 ```bash
 # 打包成 zip 上传（或用 .app 直接传）
-ditto -c -k --keepParent build/macos/Build/Products/Release/akvc-host.app akvc-host.zip
+ditto -c -k --keepParent build/macos/Build/Products/Release/<your-container-app>.app container-app.zip
 
-xcrun notarytool submit akvc-host.zip \
+xcrun notarytool submit container-app.zip \
   --apple-id you@example.com \
   --team-id ABCD1234EF \
   --password <app-specific-password> \
@@ -73,15 +73,15 @@ App-specific password 在 appleid.apple.com 生成。
 ## 5. Staple
 
 ```bash
-xcrun stapler staple build/macos/Build/Products/Release/akvc-host.app
-xcrun stapler validate build/macos/Build/Products/Release/akvc-host.app
+xcrun stapler staple build/macos/Build/Products/Release/<your-container-app>.app
+xcrun stapler validate build/macos/Build/Products/Release/<your-container-app>.app
 ```
 
 ## 6. 安装 / 授权
 
 ```bash
-# 运行 host app 触发 OSSystemExtensionRequest
-open build/macos/Build/Products/Release/akvc-host.app
+# 运行 container app 触发 OSSystemExtensionRequest
+open build/macos/Build/Products/Release/<your-container-app>.app
 ```
 
 用户需在 **系统设置 → 隐私与安全性** 中：
@@ -97,9 +97,9 @@ systemextensionsctl install <TEAMID> com.akvc.camera-extension
 ## 7. 验证签名
 
 ```bash
-codesign -dv --verbose=4 akvc-host.app
-codesign -dv --verbose=4 akvc-camera-extension.systemextension
-spctl -a -vvv -t install akvc-host.app   # Gatekeeper 评估
+codesign -dv --verbose=4 <your-container-app>.app
+codesign -dv --verbose=4 com.sidus.amaran-desktop.cameraextension.systemextension
+spctl -a -vvv -t install <your-container-app>.app   # Gatekeeper 评估
 ```
 
 ## 8. 常见公证失败

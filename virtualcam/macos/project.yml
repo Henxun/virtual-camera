@@ -1,86 +1,232 @@
 # SPDX-License-Identifier: Apache-2.0
-# AK Virtual Camera — macOS XcodeGen project spec (Phase 4 scaffold).
 #
-# Generate the .xcodeproj on a Mac with:
-#   brew install xcodegen
-#   cd virtualcam/macos && xcodegen generate
-#
-# Then:
-#   xcodebuild -project akvc-macos.xcodeproj \
-#     -scheme akvc-camera-extension -configuration Release build
-#
-# NOTE: This is a scaffold. The system-extension product type, the
-# entitlements, and the signing settings MUST be reconciled with a real
-# Developer ID account before the extension will load on a non-debug Mac.
-# See docs/phase4/signing-notarization.md.
+# AK Virtual Camera — macOS XcodeGen project spec
+# Objective-C++ / C++ only, no Swift.
 
 name: akvc-macos
 options:
   bundleIdPrefix: com.akvc
   deploymentTarget:
-    macOS: "12.3"
+    macOS: "13.0"
   createIntermediateGroups: true
 
 settings:
   base:
-    SWIFT_VERSION: "5.9"
-    MACOSX_DEPLOYMENT_TARGET: "12.3"
-    # Shared headers: the protocol/error headers + the POSIX framebus header.
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    ARCHS: "arm64 x86_64"
+    ONLY_ACTIVE_ARCH: NO
+    DEVELOPMENT_TEAM: XP3H66JF79
+    CLANG_CXX_LANGUAGE_STANDARD: "gnu++20"
+    ENABLE_HARDENED_RUNTIME: YES
     HEADER_SEARCH_PATHS:
-      - "$(SRCROOT)/framebus/include"
-      - "$(SRCROOT)/../../virtualcam/shared"
+      - "$(SRCROOT)/ipc/include"
+      - "$(SRCROOT)/../shared"
+    OTHER_CPLUSPLUSFLAGS:
+      - "-std=gnu++20"
 
 targets:
+  akvc-macos-ipc:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: ipc/include
+      - path: ipc/src
+        excludes:
+          - "framebus_consumer_probe.c"
+    settings:
+      base:
+        PRODUCT_NAME: akvc-macos-ipc
+
   akvc-camera-extension:
     type: system-extension
     platform: macOS
     sources:
-      - path: CameraExtension
+      - path: camera_extension
         excludes:
           - "Info.plist"
           - "CameraExtension.entitlements"
-      - path: framebus/src/framebus_posix.c
-      - path: framebus/include/akvc/framebus_posix.h
+      - path: demo_support/AKVCDemoFrameGenerator.h
+      - path: demo_support/AKVCDemoFrameGenerator.mm
+      - path: ipc/include
+      - path: ipc/src
+        excludes:
+          - "framebus_consumer_probe.c"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.akvc.camera-extension
+        PRODUCT_BUNDLE_IDENTIFIER: com.sidus.amaran-desktop.cameraextension
         PRODUCT_NAME: akvc-camera-extension
-        INFOPLIST_FILE: CameraExtension/Info.plist
-        CODE_SIGN_ENTITLEMENTS: CameraExtension/CameraExtension.entitlements
-        SWIFT_OBJC_BRIDGING_HEADER: CameraExtension/CameraExtension-Bridging-Header.h
-        # Signing: left empty for dev builds. For distribution set
-        # DEVELOPMENT_TEAM + CODE_SIGN_IDENTITY (see signing runbook).
+        FULL_PRODUCT_NAME: com.sidus.amaran-desktop.cameraextension.systemextension
+        WRAPPER_NAME: com.sidus.amaran-desktop.cameraextension.systemextension
+        INFOPLIST_FILE: camera_extension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: camera_extension/CameraExtension.entitlements
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
-        ENABLE_HARDENED_RUNTIME: YES
-    dependencies: []
+        APPLICATION_EXTENSION_API_ONLY: YES
+    dependencies:
+      - target: akvc-macos-ipc
+      - sdk: Foundation.framework
+      - sdk: CoreMediaIO.framework
+      - sdk: CoreMedia.framework
+      - sdk: CoreVideo.framework
 
-  akvc-host:
+  akvc-demo-app:
     type: application
     platform: macOS
     sources:
-      - path: host
+      - path: demo_app
         excludes:
           - "Info.plist"
-          - "HostApp.entitlements"
+          - "DemoApp.entitlements"
+      - path: control_bridge/AKVCCommandSupport.h
+      - path: control_bridge/AKVCCommandSupport.mm
+      - path: control_bridge/AKVCSystemExtensionSupport.h
+      - path: control_bridge/AKVCSystemExtensionSupport.mm
+      - path: ipc/include
+      - path: ipc/src
+        excludes:
+          - "framebus_consumer_probe.c"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.akvc.host
-        PRODUCT_NAME: akvc-host
-        INFOPLIST_FILE: host/Info.plist
-        CODE_SIGN_ENTITLEMENTS: host/HostApp.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.sidus.amaran-desktop.demo-app
+        PRODUCT_NAME: akvc-demo-app
+        INFOPLIST_FILE: demo_app/Info.plist
+        CODE_SIGN_ENTITLEMENTS: demo_app/DemoApp.entitlements
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
-        ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
     dependencies:
       - target: akvc-camera-extension
+      - target: akvc-macos-ipc
+      - sdk: AppKit.framework
+      - sdk: Foundation.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreMediaIO.framework
+      - sdk: SystemExtensions.framework
+
+  akvc-macos-status:
+    type: tool
+    platform: macOS
+    sources:
+      - path: control_bridge/AKVCCommandSupport.h
+      - path: control_bridge/AKVCCommandSupport.mm
+      - path: control_bridge/AKVCSystemExtensionSupport.h
+      - path: control_bridge/AKVCSystemExtensionSupport.mm
+      - path: control_bridge/akvc_macos_status.mm
+    settings:
+      base:
+        PRODUCT_NAME: akvc-macos-status
+    dependencies:
+      - target: akvc-macos-ipc
+      - sdk: Foundation.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreMediaIO.framework
+      - sdk: SystemExtensions.framework
+
+  akvc-macos-install:
+    type: tool
+    platform: macOS
+    sources:
+      - path: control_bridge/AKVCCommandSupport.h
+      - path: control_bridge/AKVCCommandSupport.mm
+      - path: control_bridge/AKVCSystemExtensionSupport.h
+      - path: control_bridge/AKVCSystemExtensionSupport.mm
+      - path: control_bridge/akvc_macos_install.mm
+    settings:
+      base:
+        PRODUCT_NAME: akvc-macos-install
+    dependencies:
+      - target: akvc-macos-ipc
+      - sdk: Foundation.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreMediaIO.framework
+      - sdk: SystemExtensions.framework
+
+  akvc-macos-uninstall:
+    type: tool
+    platform: macOS
+    sources:
+      - path: control_bridge/AKVCCommandSupport.h
+      - path: control_bridge/AKVCCommandSupport.mm
+      - path: control_bridge/AKVCSystemExtensionSupport.h
+      - path: control_bridge/AKVCSystemExtensionSupport.mm
+      - path: control_bridge/akvc_macos_uninstall.mm
+    settings:
+      base:
+        PRODUCT_NAME: akvc-macos-uninstall
+    dependencies:
+      - target: akvc-macos-ipc
+      - sdk: Foundation.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreMediaIO.framework
+      - sdk: SystemExtensions.framework
+
+  akvc-macos-list-devices:
+    type: tool
+    platform: macOS
+    sources:
+      - path: control_bridge/AKVCCommandSupport.h
+      - path: control_bridge/AKVCCommandSupport.mm
+      - path: control_bridge/akvc_macos_list_devices.mm
+    settings:
+      base:
+        PRODUCT_NAME: akvc-macos-list-devices
+    dependencies:
+      - target: akvc-macos-ipc
+      - sdk: Foundation.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreMediaIO.framework
+
+  akvc-macos-sync-ipc:
+    type: tool
+    platform: macOS
+    sources:
+      - path: control_bridge/AKVCCommandSupport.h
+      - path: control_bridge/AKVCCommandSupport.mm
+      - path: control_bridge/akvc_macos_sync_ipc.mm
+    settings:
+      base:
+        PRODUCT_NAME: akvc-macos-sync-ipc
+    dependencies:
+      - target: akvc-macos-ipc
+      - sdk: Foundation.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreMediaIO.framework
+
+  akvc-macos-direct-sender:
+    type: library.dynamic
+    platform: macOS
+    sources:
+      - path: direct_sender
+    settings:
+      base:
+        PRODUCT_NAME: libakvc-macos-direct-sender
+    dependencies:
+      - sdk: Foundation.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreMediaIO.framework
+      - sdk: CoreMedia.framework
+      - sdk: CoreVideo.framework
 
 schemes:
+  akvc-macos-all:
+    build:
+      targets:
+        akvc-macos-ipc: all
+        akvc-camera-extension: all
+        akvc-demo-app: all
+        akvc-macos-status: all
+        akvc-macos-install: all
+        akvc-macos-uninstall: all
+        akvc-macos-list-devices: all
+        akvc-macos-sync-ipc: all
+        akvc-macos-direct-sender: all
   akvc-camera-extension:
     build:
       targets:
         akvc-camera-extension: all
-  akvc-host:
+  akvc-demo-app:
     build:
       targets:
-        akvc-host: all
+        akvc-demo-app: all

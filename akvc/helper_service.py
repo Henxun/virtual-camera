@@ -7,7 +7,52 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from akvc._core_native import NativeWindowsHelperClient
+try:
+    from akvc._core_native import NativeWindowsHelperClient
+except ModuleNotFoundError:  # pragma: no cover - import-contract fallback
+    class NativeWindowsHelperClient:  # type: ignore[no-redef]
+        last_error_message = ""
+        last_launch_error = ""
+
+        def start_service(self, exe: str) -> bool:
+            del exe
+            return False
+
+        def quit(self) -> None:
+            return None
+
+        def ping(self) -> bool:
+            return False
+
+        def status(self):
+            return {}
+
+        def register_mf(self, name: str) -> bool:
+            del name
+            return False
+
+        def unregister_mf(self) -> bool:
+            return False
+
+        def install_autostart(self, exe: str, log_path: str, task_name: str) -> bool:
+            del exe, log_path, task_name
+            return False
+
+        def uninstall_autostart(self, task_name: str) -> bool:
+            del task_name
+            return False
+
+        def start_installed(self, task_name: str, timeout_s: float = 8.0) -> bool:
+            del task_name, timeout_s
+            return False
+
+        def scheduled_task_status(self, task_name: str) -> dict:
+            del task_name
+            return {}
+
+        def ensure_running(self, exe: str, task_name: str, prefer_installed: bool) -> bool:
+            del exe, task_name, prefer_installed
+            return False
 
 from .windows_runtime import find_helper_exe
 

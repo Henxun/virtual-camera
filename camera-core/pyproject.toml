@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "akvc-core"
 version = "0.2.0"
-description = "AK Virtual Camera — frame core (cross-platform)"
+description = "AK Virtual Camera — frame core + runtime assets"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = { text = "Apache-2.0" }
@@ -29,3 +29,16 @@ include = ["akvc*"]
 
 [tool.setuptools.package-data]
 "akvc.core" = ["py.typed"]
+"akvc" = [
+    "_runtime/windows/akvc_helper.exe",
+    "_runtime/windows/akvc-mf.dll",
+    "_runtime/windows/akvc-dshow.dll",
+    "_runtime/macos/README.md",
+    "_runtime/macos/akvc-macos-status",
+    "_runtime/macos/akvc-macos-install",
+    "_runtime/macos/akvc-macos-uninstall",
+    "_runtime/macos/akvc-macos-list-devices",
+    "_runtime/macos/akvc-macos-sync-ipc",
+    "_runtime/macos/libakvc-macos-direct-sender.dylib",
+    "_runtime/macos/VirtualCamera.pkg",
+]

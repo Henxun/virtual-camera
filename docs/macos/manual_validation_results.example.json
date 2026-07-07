@@ -1,0 +1,140 @@
+{
+  "facetime": {
+    "checks": [
+      "Video 菜单中能看到 AKVC Demo。",
+      "切换后 FaceTime 本地预览能出现实时画面。",
+      "预览画面保持稳定，无明显黑屏、冻结或比例异常。"
+    ],
+    "evidence": {
+      "device_listed": false,
+      "device_selected": false,
+      "preview_visible": false,
+      "screenshot": ""
+    },
+    "name": "FaceTime",
+    "notes": "菜单中已看到 AKVC Demo，但尚未在真实通话中确认画面稳定性。",
+    "ready": true,
+    "result": "pending",
+    "status": "可开始验证 AKVC Demo",
+    "steps": [
+      "打开 FaceTime，并保持应用处于前台。",
+      "在菜单栏 Video 中选择 AKVC Demo。"
+    ],
+    "validated": false
+  },
+  "google_meet": {
+    "checks": [
+      "浏览器摄像头选择器中能看到 AKVC Demo。",
+      "切换后 Meet 预览格中能出现实时画面。",
+      "浏览器权限已允许，画面无明显黑屏、镜像异常或冻结。"
+    ],
+    "evidence": {
+      "device_listed": false,
+      "device_selected": false,
+      "preview_visible": false,
+      "screenshot": ""
+    },
+    "name": "Google Meet",
+    "notes": "浏览器摄像头选择器已出现 AKVC Demo，但尚未完成真实会议预览验证。",
+    "ready": true,
+    "result": "pending",
+    "status": "可开始验证 AKVC Demo",
+    "steps": [
+      "在 Chrome 或 Edge 中打开 Google Meet 视频设置。",
+      "将摄像头切换为 AKVC Demo。"
+    ],
+    "validated": false
+  },
+  "obs": {
+    "checks": [
+      "Video Capture Device 列表中能看到 AKVC Demo。",
+      "选择后 OBS 预览区能出现实时画面。",
+      "预览尺寸与帧率看起来正常，无明显黑屏或掉帧卡死。"
+    ],
+    "evidence": {
+      "device_listed": false,
+      "device_selected": false,
+      "preview_visible": false,
+      "screenshot": ""
+    },
+    "name": "OBS",
+    "notes": "已准备好 Video Capture Device 验证路径，等待确认实时预览是否正常。",
+    "ready": true,
+    "result": "pending",
+    "status": "可开始验证 AKVC Demo",
+    "steps": [
+      "在 OBS 中添加 Video Capture Device。",
+      "设备列表中选择 AKVC Demo。"
+    ],
+    "validated": false
+  },
+  "quicktime": {
+    "checks": [
+      "摄像头菜单中能看到 AKVC Demo。",
+      "选择后影片录制窗口能出现实时画面。",
+      "预览画面无明显拉伸、黑屏或长时间静止。"
+    ],
+    "evidence": {
+      "device_listed": false,
+      "device_selected": false,
+      "preview_visible": false,
+      "screenshot": ""
+    },
+    "name": "QuickTime",
+    "notes": "影片录制入口已确认，等待验证实时画面是否可见。",
+    "ready": true,
+    "result": "pending",
+    "status": "可开始验证 AKVC Demo",
+    "steps": [
+      "打开 QuickTime Player，新建影片录制。",
+      "在录制按钮旁的摄像头菜单中选择 AKVC Demo。"
+    ],
+    "validated": false
+  },
+  "teams": {
+    "checks": [
+      "设备设置页能看到 AKVC Demo。",
+      "切换后本地摄像头预览能出现实时画面。",
+      "预览画面在设备页保持稳定，无明显黑屏或冻结。"
+    ],
+    "evidence": {
+      "device_listed": false,
+      "device_selected": false,
+      "preview_visible": false,
+      "screenshot": ""
+    },
+    "name": "Teams",
+    "notes": "设备页面尚未在当前机器上完成实际选择验证。",
+    "ready": true,
+    "result": "pending",
+    "status": "可开始验证 AKVC Demo",
+    "steps": [
+      "打开 Teams > 设置 > 设备。",
+      "在摄像头项中选择 AKVC Demo。"
+    ],
+    "validated": false
+  },
+  "zoom": {
+    "checks": [
+      "摄像头列表中能看到 AKVC Demo。",
+      "切换到 AKVC Demo 后，自预览能出现实时画面。",
+      "预览画面持续数秒无明显卡死、黑屏或尺寸异常。"
+    ],
+    "evidence": {
+      "device_listed": false,
+      "device_selected": false,
+      "preview_visible": false,
+      "screenshot": ""
+    },
+    "name": "Zoom",
+    "notes": "等待完成自预览与实际会议画面检查。",
+    "ready": true,
+    "result": "pending",
+    "status": "可开始验证 AKVC Demo",
+    "steps": [
+      "打开 Zoom > 设置 > 视频。",
+      "在摄像头列表中选择 AKVC Demo。"
+    ],
+    "validated": false
+  }
+}

@@ -19,7 +19,7 @@
 |---|---|
 | `virtualcam/macos/framebus/` | POSIX shm 消费者（C），复用 `akvc_protocol.h` |
 | `virtualcam/macos/CameraExtension/` | CoreMediaIO Camera Extension（Swift）：Provider/Device/Stream/Reader |
-| `virtualcam/macos/host/` | 激活扩展的 Host app（Swift） |
+| `virtualcam/macos/control_bridge/` | 容器 App 与命令工具共享的扩展控制桥接层 |
 | `virtualcam/macos/project.yml` | XcodeGen 工程描述 |
 | `camera-core/.../frame_sink/macos_shm.py` | Python POSIX shm 生产者（镜像 `windows_shm.py`） |
 | `camera-core/.../frame_sink/_protocol.py` | 跨平台共享协议常量（单一真值） |
@@ -101,10 +101,20 @@ virtualcam/macos/
 │   ├── CameraExtension-Bridging-Header.h
 │   ├── Info.plist
 │   └── CameraExtension.entitlements
-└── host/                             # Swift app
-    ├── main.swift                    # OSSystemExtensionRequest
+├── control_bridge/                   # 共享控制桥（ObjC++）
+│   ├── AKVCCommandSupport.h
+│   ├── AKVCCommandSupport.mm
+│   ├── AKVCSystemExtensionSupport.h
+│   └── AKVCSystemExtensionSupport.mm
+├── demo_support/                     # extension demo 画面生成器（无独立 host app）
+│   ├── AKVCDemoFrameGenerator.h
+│   └── AKVCDemoFrameGenerator.mm
+└── demo_app/                         # GUI 容器 App（跨平台接入对齐）
+    ├── main.mm
+    ├── AppDelegate.mm
+    ├── DemoControlService.mm
     ├── Info.plist
-    └── HostApp.entitlements
+    └── DemoApp.entitlements
 ```
 
 ### 3.2 Python

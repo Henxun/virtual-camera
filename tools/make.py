@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -255,6 +256,50 @@ MACOS_ROOT = ROOT / "virtualcam" / "macos"
 MACOS_BUILD = BUILD / "macos"
 MACOS_PROJECT_YML = MACOS_ROOT / "project.yml"
 # The Camera Extension system-extension bundle (built by xcodebuild).
+MACOS_EXT_BUNDLE = MACOS_BUILD / "Build" / "Products" / "Release" / "com.sidus.amaran-desktop.cameraextension.systemextension"
+# Legacy fallback only. Real container-app selection should go through
+# `_detect_macos_release_app_bundle()` so the main app can replace akvc-host.
+MACOS_LEGACY_HOST_APP_BUNDLE = MACOS_BUILD / "Build" / "Products" / "Release" / "akvc-host.app"
+MACOS_STATUS_TOOL = MACOS_BUILD / "Build" / "Products" / "Release" / "akvc-macos-status"
+MACOS_INSTALL_TOOL = MACOS_BUILD / "Build" / "Products" / "Release" / "akvc-macos-install"
+MACOS_UNINSTALL_TOOL = MACOS_BUILD / "Build" / "Products" / "Release" / "akvc-macos-uninstall"
+MACOS_LIST_DEVICES_TOOL = MACOS_BUILD / "Build" / "Products" / "Release" / "akvc-macos-list-devices"
+MACOS_SYNC_IPC_TOOL = MACOS_BUILD / "Build" / "Products" / "Release" / "akvc-macos-sync-ipc"
+MACOS_DIRECT_SENDER_LIB = MACOS_BUILD / "Build" / "Products" / "Release" / "libakvc-macos-direct-sender.dylib"
+MACOS_PKG = MACOS_BUILD / "VirtualCamera.pkg"
+MACOS_RUNTIME_DIR = ROOT / "camera-core" / "src" / "akvc" / "_runtime" / "macos"
+MACOS_DMG = MACOS_BUILD / "VirtualCamera.dmg"
+MACOS_ZIP = MACOS_BUILD / "VirtualCamera.zip"
+MACOS_DEPLOYMENT_TARGET = os.environ.get("MACOS_DEPLOYMENT_TARGET", "13.0")
+MACOS_BUILD_ARCHS = os.environ.get("MACOS_ARCHS", "arm64 x86_64")
+MACOS_INSTALLER_DIR = ROOT / "installer" / "macos"
+MACOS_BUILD_PKG_SCRIPT = MACOS_INSTALLER_DIR / "build_pkg.sh"
+MACOS_BUILD_DMG_SCRIPT = MACOS_INSTALLER_DIR / "build_dmg.sh"
+MACOS_BUILD_ZIP_SCRIPT = MACOS_INSTALLER_DIR / "build_zip.sh"
+MACOS_SIGN_SCRIPT = MACOS_INSTALLER_DIR / "sign_app.sh"
+MACOS_NOTARIZE_SCRIPT = MACOS_INSTALLER_DIR / "notarize.sh"
+MACOS_STAPLE_SCRIPT = MACOS_INSTALLER_DIR / "staple.sh"
+MACOS_UNINSTALL_SCRIPT = MACOS_INSTALLER_DIR / "uninstall.sh"
+MACOS_SMOKE_SCRIPT = ROOT / "tools" / "macos_smoke.py"
+MACOS_DIRECT_PUSH_DEMO_SCRIPT = ROOT / "tools" / "macos_direct_push_demo.py"
+MACOS_DIRECT_SENDER_OBJECT_DEMO_SCRIPT = ROOT / "tools" / "macos_direct_sender_object_demo.py"
+MACOS_NATIVE_VERIFY_SCRIPT = ROOT / "tools" / "macos_native_verify.py"
+MACOS_TOOLCHAIN_PREFLIGHT_SCRIPT = ROOT / "tools" / "macos_toolchain_preflight.py"
+MACOS_RELEASE_DIAGNOSTICS_SCRIPT = ROOT / "tools" / "macos_release_diagnostics.py"
+MACOS_BENCHMARK_SCRIPT = ROOT / "tools" / "macos_benchmark.py"
+MACOS_FRAMEBUS_ROUNDTRIP_SCRIPT = ROOT / "tools" / "macos_framebus_roundtrip.py"
+MACOS_LIST_DEVICES_BINARY_CHECK_SCRIPT = ROOT / "tools" / "macos_list_devices_binary_check.py"
+MACOS_VALIDATION_REPORT_SCRIPT = ROOT / "tools" / "macos_validation_report.py"
+MACOS_VALIDATION_SESSION_SCRIPT = ROOT / "tools" / "macos_validation_session.py"
+MACOS_VALIDATION_SESSION_ARTIFACT_CHECK_SCRIPT = ROOT / "tools" / "macos_validation_session_artifact_check.py"
+MACOS_VALIDATION_SESSION_ACCEPTANCE_SCRIPT = ROOT / "tools" / "macos_validation_session_acceptance.py"
+MACOS_VALIDATION_SESSION_ACCEPTANCE_CONTRACT_SCRIPT = ROOT / "tools" / "macos_validation_session_acceptance_contract.py"
+MACOS_VALIDATION_SESSION_SUMMARY_SCRIPT = ROOT / "tools" / "macos_validation_session_summary.py"
+MACOS_INSTALL_SESSION_SCRIPT = ROOT / "tools" / "macos_install_session.py"
+MACOS_HEADLESS_DMG_TOKENS = (
+    "device not configured",
+    "设备未配置",
+)
 BUILD_PYTHON_STAMP = BUILD / ".python-executable"
 
 
@@ -283,6 +328,33 @@ def _build_env() -> dict[str, str] | None:
 def _run(cmd: list[str], *, cwd: Path | None = None, env: dict | None = None) -> int:
     print(f"[make] $ {' '.join(cmd)}")
     return subprocess.call(cmd, cwd=str(cwd) if cwd else None, env=env)
+
+
+def _run_macos_script_result(
+    script: Path,
+    *,
+    env: dict[str, str] | None = None,
+    args: list[str] | None = None,
+    capture_output: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    _check_macos()
+    if not script.is_file():
+        raise FileNotFoundError(script)
+    merged_env = _macos_script_env()
+    if env:
+        merged_env.update(env)
+    cmd = ["bash", str(script)]
+    if args:
+        cmd.extend(args)
+    print(f"[make] $ {' '.join(cmd)}")
+    return subprocess.run(
+        cmd,
+        cwd=str(ROOT),
+        env=merged_env,
+        capture_output=capture_output,
+        text=True,
+        check=False,
+    )
 
 
 def _force_rmtree(path: Path) -> None:
@@ -820,6 +892,207 @@ def _require_tool(name: str) -> str:
     return p
 
 
+def _macos_script_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("BUILD_DIR", str(MACOS_BUILD))
+    env.setdefault("PRODUCTS_DIR", str(MACOS_BUILD / "Build" / "Products" / "Release"))
+    detected_app_bundle = _detect_macos_release_app_bundle()
+    if detected_app_bundle is not None:
+        env.setdefault("APP_BUNDLE", str(detected_app_bundle))
+    env.setdefault("EXT_BUNDLE", str(MACOS_EXT_BUNDLE))
+    env.setdefault("DIRECT_SENDER_LIB", str(MACOS_DIRECT_SENDER_LIB))
+    env.setdefault("PKG_PATH", str(MACOS_PKG))
+    env.setdefault("DMG_PATH", str(MACOS_DMG))
+    env.setdefault("ZIP_PATH", str(MACOS_ZIP))
+    env.setdefault("UNINSTALL_TOOL", str(MACOS_UNINSTALL_TOOL))
+    sign_identity = _effective_macos_sign_identity()
+    if sign_identity:
+        env.setdefault("SIGN_IDENTITY", sign_identity)
+    productsign_identity = _effective_macos_productsign_identity()
+    if productsign_identity:
+        env.setdefault("PRODUCTSIGN_IDENTITY", productsign_identity)
+    return env
+
+
+def _resolve_macos_container_app_overrides(
+    args: argparse.Namespace,
+) -> tuple[str | None, str | None]:
+    app_bundle = getattr(args, "app_bundle", None)
+    app_executable = getattr(args, "app_executable", None)
+    host_bundle = getattr(args, "host_bundle", None)
+    host_executable = getattr(args, "host_executable", None)
+    if app_bundle and host_bundle and str(app_bundle) != str(host_bundle):
+        raise ValueError("--app-bundle and --host-bundle cannot point at different macOS app bundles")
+    if app_executable and host_executable and str(app_executable) != str(host_executable):
+        raise ValueError(
+            "--app-executable and --host-executable cannot point at different macOS app executables"
+        )
+    return (
+        str(app_bundle) if app_bundle else (str(host_bundle) if host_bundle else None),
+        str(app_executable) if app_executable else (str(host_executable) if host_executable else None),
+    )
+
+
+def _append_macos_container_app_flags(
+    cmd: list[str],
+    *,
+    app_bundle: str | None,
+    app_executable: str | None,
+) -> None:
+    if app_bundle:
+        cmd.extend(["--app-bundle", app_bundle])
+    if app_executable:
+        cmd.extend(["--app-executable", app_executable])
+
+
+def _macos_release_products_dir() -> Path:
+    return MACOS_BUILD / "Build" / "Products" / "Release"
+
+
+def _macos_app_embeds_extension(bundle_path: Path) -> bool:
+    return (
+        bundle_path
+        / "Contents"
+        / "Library"
+        / "SystemExtensions"
+        / MACOS_EXT_BUNDLE.name
+    ).is_dir()
+
+
+def _is_preferred_macos_container_app(bundle_path: Path) -> bool:
+    return bundle_path.name != "akvc-host.app"
+
+
+def _detect_macos_release_app_bundle() -> Path | None:
+    products_dir = _macos_release_products_dir()
+    candidates = sorted(path for path in products_dir.glob("*.app") if path.is_dir())
+    for candidate in candidates:
+        if _is_preferred_macos_container_app(candidate) and _macos_app_embeds_extension(candidate):
+            return candidate
+    for candidate in candidates:
+        if _macos_app_embeds_extension(candidate):
+            return candidate
+    if MACOS_LEGACY_HOST_APP_BUNDLE.is_dir():
+        return MACOS_LEGACY_HOST_APP_BUNDLE
+    return None
+
+
+def _detect_macos_identity(prefix: str, policy: str) -> str | None:
+    if sys.platform != "darwin":
+        return None
+    if not shutil.which("security"):
+        return None
+    try:
+        completed = subprocess.run(
+            ["security", "find-identity", "-v", "-p", policy],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    for line in completed.stdout.splitlines():
+        if prefix not in line:
+            continue
+        match = re.search(r'"([^"]+)"', line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _effective_macos_sign_identity() -> str | None:
+    return os.environ.get("SIGN_IDENTITY") or _detect_macos_identity(
+        "Developer ID Application:",
+        "codesigning",
+    )
+
+
+def _effective_macos_productsign_identity() -> str | None:
+    return os.environ.get("PRODUCTSIGN_IDENTITY") or _detect_macos_identity(
+        "Developer ID Installer:",
+        "basic",
+    )
+
+
+def _run_macos_script(script: Path, *, env: dict[str, str] | None = None, args: list[str] | None = None) -> int:
+    try:
+        completed = _run_macos_script_result(script, env=env, args=args, capture_output=False)
+    except FileNotFoundError:
+        print(f"[make] missing macOS helper script: {script}", file=sys.stderr)
+        return 2
+    return int(completed.returncode)
+
+
+def _macos_release_env_overrides(args: argparse.Namespace) -> dict[str, str]:
+    env: dict[str, str] = {}
+    if getattr(args, "app_bundle", None):
+        env["APP_BUNDLE"] = str(args.app_bundle)
+    if getattr(args, "pkg_path", None):
+        env["PKG_PATH"] = str(args.pkg_path)
+    if getattr(args, "dmg_path", None):
+        env["DMG_PATH"] = str(args.dmg_path)
+    if getattr(args, "zip_path", None):
+        env["ZIP_PATH"] = str(args.zip_path)
+    if getattr(args, "targets", None):
+        env["NOTARIZE_TARGETS"] = str(args.targets)
+        env["STAPLE_TARGETS"] = str(args.targets)
+    if getattr(args, "notary_profile", None):
+        env["NOTARY_PROFILE"] = str(args.notary_profile)
+    return env
+
+
+def _is_headless_dmg_failure(output: str) -> bool:
+    lowered = output.lower()
+    return any(token in lowered for token in MACOS_HEADLESS_DMG_TOKENS)
+
+
+def _macos_effective_archs(args: argparse.Namespace) -> str:
+    value = getattr(args, "archs", None)
+    if value:
+        return str(value)
+    return MACOS_BUILD_ARCHS
+
+
+def _macos_effective_deployment_target(args: argparse.Namespace) -> str:
+    value = getattr(args, "deployment_target", None)
+    if value:
+        return str(value)
+    return MACOS_DEPLOYMENT_TARGET
+
+
+def _macos_unsigned_build_settings() -> list[str]:
+    """Build settings that keep compile-only flows off the signing path."""
+    return [
+        "CODE_SIGNING_ALLOWED=NO",
+        "CODE_SIGNING_REQUIRED=NO",
+        "CODE_SIGN_IDENTITY=",
+        "DEVELOPMENT_TEAM=",
+        "PROVISIONING_PROFILE=",
+        "PROVISIONING_PROFILE_SPECIFIER=",
+    ]
+
+
+def _macos_project_spec_path() -> Path:
+    return MACOS_ROOT / "project.yml"
+
+
+def _macos_project_requires_regeneration(project_dir: Path) -> bool:
+    if not project_dir.is_dir():
+        return True
+
+    spec = _macos_project_spec_path()
+    project_file = project_dir / "project.pbxproj"
+    if not spec.is_file() or not project_file.is_file():
+        return False
+
+    try:
+        return spec.stat().st_mtime > project_file.stat().st_mtime
+    except OSError:
+        return False
+
+
 def cmd_configure_macos(_: argparse.Namespace) -> int:
     _check_macos()
     xcodegen = _require_tool("xcodegen")
@@ -827,34 +1100,45 @@ def cmd_configure_macos(_: argparse.Namespace) -> int:
     MACOS_BUILD.mkdir(parents=True, exist_ok=True)
     # Generate the .xcodeproj from project.yml. The generated project lives
     # next to project.yml (in virtualcam/macos/).
-    return _run([xcodegen, "generate", "--spec", str(MACOS_PROJECT_YML)],
+    return _run([xcodegen, "generate", "--spec", str(_macos_project_spec_path())],
                 cwd=MACOS_ROOT)
 
 
 def cmd_build_macos(args: argparse.Namespace) -> int:
     _check_macos()
     _require_tool("xcodebuild")
+    effective_archs = _macos_effective_archs(args)
+    effective_deployment_target = _macos_effective_deployment_target(args)
     proj = MACOS_ROOT / "akvc-macos.xcodeproj"
-    if not proj.is_dir():
+    if _macos_project_requires_regeneration(proj):
         rc = cmd_configure_macos(args)
         if rc != 0:
             return rc
-    # Build the Camera Extension system-extension target. The scheme name
-    # is defined in project.yml; "akvc-camera-extension" is the extension
-    # target, "akvc-host" the host app.
-    rc = _run([
+    # Build the aggregate macOS scheme so the extension, container app, and
+    # command-line status/install tools are produced together.
+    build_cmd = [
         "xcodebuild", "-project", str(proj),
-        "-scheme", "akvc-camera-extension",
+        "-scheme", "akvc-macos-all",
         "-configuration", "Release",
         "-derivedDataPath", str(MACOS_BUILD),
+        f"ARCHS={effective_archs}",
+        "ONLY_ACTIVE_ARCH=NO",
+        f"MACOSX_DEPLOYMENT_TARGET={effective_deployment_target}",
         "build",
-    ])
+    ]
+    build_cmd.extend(_macos_unsigned_build_settings())
+    rc = _run(build_cmd)
     if rc != 0:
         return rc
     print(f"[make] Camera Extension bundle: {MACOS_EXT_BUNDLE}")
-    print("[make] NOTE: signing + notarization required before it will load "
-          "on a non-debug Mac. See docs/phase4/signing-notarization.md.")
-    if args.python:
+    print(f"[make] macOS direct sender dylib: {MACOS_DIRECT_SENDER_LIB}")
+    print(f"[make] macOS status tool: {MACOS_STATUS_TOOL}")
+    print(f"[make] macOS install tool: {MACOS_INSTALL_TOOL}")
+    print("[make] NOTE: build completed without code signing so provisioning "
+          "is not required for local/CI compilation.")
+    print("[make] NOTE: run `python tools/make.py sign` before packaging or "
+          "notarization. See docs/macos/signing.md.")
+    if getattr(args, "python", False):
         _run([sys.executable, "-m", "pip", "install", "-e",
               str(ROOT / "camera-core")])
         _run([sys.executable, "-m", "pip", "install", "-e",
@@ -866,18 +1150,19 @@ def cmd_build_macos(args: argparse.Namespace) -> int:
 
 def cmd_register_macos(_: argparse.Namespace) -> int:
     _check_macos()
-    # The Apple-blessed way to install a Camera Extension is to run the host
-    # app, which triggers an OSSystemExtensionRequest that the user must
+    # The Apple-blessed way to install a Camera Extension is to run the
+    # container app, which triggers an OSSystemExtensionRequest that the user must
     # approve. systemextensionsctl is a developer-only escape hatch.
     print(
         "[make] macOS Camera Extension registration is interactive:\n"
-        "  1. Build & sign the host app (cmd_build_macos + signing runbook).\n"
-        "  2. Launch the host app — it posts OSSystemExtensionRequest.\n"
-        "  3. Approve the system-extension prompt in System Settings.\n"
-        "  4. Enable the camera in System Settings > Privacy > Camera.\n"
+        "  1. Build the container app (`python tools/make.py build`).\n"
+        "  2. Sign the container app + extension (`python tools/make.py sign`).\n"
+        "  3. Launch the container app — it posts OSSystemExtensionRequest.\n"
+        "  4. Approve the system-extension prompt in System Settings.\n"
+        "  5. Enable the camera in System Settings > Privacy > Camera.\n"
         "For dev-only sideloading you can also run:\n"
         "  systemextensionsctl developer on   # one-time\n"
-        "  systemextensionsctl install <team> akvc-camera-extension"
+        "  systemextensionsctl install <team> com.sidus.amaran-desktop.cameraextension"
     )
     return 0
 
@@ -886,10 +1171,702 @@ def cmd_unregister_macos(_: argparse.Namespace) -> int:
     _check_macos()
     print(
         "[make] To uninstall the Camera Extension:\n"
-        "  systemextensionsctl uninstall <team-id> akvc-camera-extension\n"
+        "  systemextensionsctl uninstall <team-id> com.sidus.amaran-desktop.cameraextension\n"
         "or delete it via System Settings > Extensions."
     )
     return 0
+
+
+def cmd_package_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not args.skip_build:
+        rc = cmd_build_macos(args)
+        if rc != 0:
+            return rc
+    sign_identity = _effective_macos_sign_identity()
+    if sign_identity:
+        rc = cmd_sign_macos(args)
+        if rc != 0:
+            return rc
+    rc = _run_macos_script(MACOS_BUILD_PKG_SCRIPT)
+    if rc != 0:
+        return rc
+    try:
+        dmg_completed = _run_macos_script_result(MACOS_BUILD_DMG_SCRIPT, capture_output=True)
+    except FileNotFoundError:
+        print(f"[make] missing macOS helper script: {MACOS_BUILD_DMG_SCRIPT}", file=sys.stderr)
+        return 2
+    if dmg_completed.stdout:
+        sys.stdout.write(dmg_completed.stdout)
+    if dmg_completed.stderr:
+        sys.stderr.write(dmg_completed.stderr)
+    if dmg_completed.returncode != 0:
+        dmg_output = "\n".join(
+            part for part in (dmg_completed.stdout, dmg_completed.stderr) if part
+        )
+        if _is_headless_dmg_failure(dmg_output):
+            print("[make] NOTE: dmg creation failed in the current headless/restricted environment; continuing with pkg/zip artifacts.")
+        else:
+            return int(dmg_completed.returncode)
+    rc = _run_macos_script(MACOS_BUILD_ZIP_SCRIPT)
+    if rc != 0:
+        return rc
+    print(f"[make] pkg artifact: {MACOS_PKG}")
+    if MACOS_DMG.is_file():
+        print(f"[make] dmg artifact: {MACOS_DMG}")
+    else:
+        print("[make] dmg artifact: not generated in the current environment")
+    print(f"[make] zip artifact: {MACOS_ZIP}")
+    if getattr(args, "sync_runtime", False):
+        rc = _sync_macos_runtime_assets(require_pkg=True)
+        if rc != 0:
+            return rc
+    return 0
+
+
+def cmd_sign_macos(_: argparse.Namespace) -> int:
+    return _run_macos_script(MACOS_SIGN_SCRIPT)
+
+
+def cmd_notarize_macos(args: argparse.Namespace) -> int:
+    env = _macos_release_env_overrides(args)
+    if "STAPLE_TARGETS" in env:
+        env.pop("STAPLE_TARGETS", None)
+    return _run_macos_script(MACOS_NOTARIZE_SCRIPT, env=env or None)
+
+
+def cmd_staple_macos(args: argparse.Namespace) -> int:
+    env = _macos_release_env_overrides(args)
+    if "NOTARIZE_TARGETS" in env:
+        env.pop("NOTARIZE_TARGETS", None)
+    return _run_macos_script(MACOS_STAPLE_SCRIPT, env=env or None)
+
+
+def cmd_smoke_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_SMOKE_SCRIPT.is_file():
+        print(f"[make] missing smoke script: {MACOS_SMOKE_SCRIPT}", file=sys.stderr)
+        return 2
+    try:
+        app_bundle, app_executable = _resolve_macos_container_app_overrides(args)
+    except ValueError as exc:
+        print(f"[make] {exc}", file=sys.stderr)
+        return 2
+    cmd = [sys.executable, str(MACOS_SMOKE_SCRIPT)]
+    if getattr(args, "name", None):
+        cmd.extend(["--name", str(args.name)])
+    if getattr(args, "status_tool", None):
+        cmd.extend(["--status-tool", str(args.status_tool)])
+    if getattr(args, "install_tool", None):
+        cmd.extend(["--install-tool", str(args.install_tool)])
+    if getattr(args, "list_devices_tool", None):
+        cmd.extend(["--list-devices-tool", str(args.list_devices_tool)])
+    if getattr(args, "uninstall_tool", None):
+        cmd.extend(["--uninstall-tool", str(args.uninstall_tool)])
+    if getattr(args, "sync_ipc_tool", None):
+        cmd.extend(["--sync-ipc-tool", str(args.sync_ipc_tool)])
+    if getattr(args, "pkg_path", None):
+        cmd.extend(["--pkg-path", str(args.pkg_path)])
+    _append_macos_container_app_flags(cmd, app_bundle=app_bundle, app_executable=app_executable)
+    if getattr(args, "direct_sender_library", None):
+        cmd.extend(["--direct-sender-library", str(args.direct_sender_library)])
+    if getattr(args, "installer_executable", None):
+        cmd.extend(["--installer-executable", str(args.installer_executable)])
+    if getattr(args, "direct_push_demo_tool", None):
+        cmd.extend(["--direct-push-demo-tool", str(args.direct_push_demo_tool)])
+    if getattr(args, "direct_push_frames", None) is not None:
+        cmd.extend(["--direct-push-frames", str(args.direct_push_frames)])
+    if getattr(args, "direct_push_frame_kind", None):
+        cmd.extend(["--direct-push-frame-kind", str(args.direct_push_frame_kind)])
+    if getattr(args, "direct_push_entrypoint", None):
+        cmd.extend(["--direct-push-entrypoint", str(args.direct_push_entrypoint)])
+    if getattr(args, "direct_push_allow_shared_memory_fallback", False):
+        cmd.append("--direct-push-allow-shared-memory-fallback")
+    if getattr(args, "direct_push_request_camera_access", False):
+        cmd.append("--direct-push-request-camera-access")
+    if getattr(args, "direct_sender_object_demo_tool", None):
+        cmd.extend(["--direct-sender-object-demo-tool", str(args.direct_sender_object_demo_tool)])
+    if getattr(args, "direct_sender_object_frames", None) is not None:
+        cmd.extend(["--direct-sender-object-frames", str(args.direct_sender_object_frames)])
+    if getattr(args, "direct_sender_object_frame_kind", None):
+        cmd.extend(["--direct-sender-object-frame-kind", str(args.direct_sender_object_frame_kind)])
+    if getattr(args, "direct_sender_object_request_camera_access", False):
+        cmd.append("--direct-sender-object-request-camera-access")
+    if getattr(args, "disable_auto_package", False):
+        cmd.append("--disable-auto-package")
+    if args.run_install:
+        cmd.append("--run-install")
+    if args.run_uninstall:
+        cmd.append("--run-uninstall")
+    if getattr(args, "run_direct_push_demo", False):
+        cmd.append("--run-direct-push-demo")
+    if getattr(args, "run_direct_sender_object_demo", False):
+        cmd.append("--run-direct-sender-object-demo")
+    if args.framebus_roundtrip_json:
+        cmd.extend(["--framebus-roundtrip-json", str(args.framebus_roundtrip_json)])
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_direct_push_demo_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_DIRECT_PUSH_DEMO_SCRIPT.is_file():
+        print(f"[make] missing direct push demo script: {MACOS_DIRECT_PUSH_DEMO_SCRIPT}", file=sys.stderr)
+        return 2
+    try:
+        app_bundle, app_executable = _resolve_macos_container_app_overrides(args)
+    except ValueError as exc:
+        print(f"[make] {exc}", file=sys.stderr)
+        return 2
+    if app_bundle and app_executable:
+        print(
+            "[make] --app-bundle/--host-bundle and --app-executable/--host-executable are mutually exclusive",
+            file=sys.stderr,
+        )
+        return 2
+    cmd = [
+        sys.executable,
+        str(MACOS_DIRECT_PUSH_DEMO_SCRIPT),
+        "--width", str(args.width),
+        "--height", str(args.height),
+        "--fps", str(args.fps),
+        "--duration", str(args.duration),
+        "--name", str(args.name),
+    ]
+    _append_macos_container_app_flags(cmd, app_bundle=app_bundle, app_executable=app_executable)
+    if getattr(args, "direct_sender_library", None):
+        cmd.extend(["--direct-sender-library", str(args.direct_sender_library)])
+    if getattr(args, "frame_kind", None):
+        cmd.extend(["--frame-kind", str(args.frame_kind)])
+    if getattr(args, "entrypoint", None):
+        cmd.extend(["--entrypoint", str(args.entrypoint)])
+    if getattr(args, "allow_shared_memory_fallback", False):
+        cmd.append("--allow-shared-memory-fallback")
+    if getattr(args, "request_camera_access", False):
+        cmd.append("--request-camera-access")
+    if getattr(args, "require_direct_runtime", False):
+        cmd.append("--require-direct-runtime")
+    if getattr(args, "probe_only", False):
+        cmd.append("--probe-only")
+    if getattr(args, "frames", None) is not None:
+        cmd.extend(["--frames", str(args.frames)])
+    if getattr(args, "output", None):
+        cmd.extend(["--report-json", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_direct_sender_object_demo_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_DIRECT_SENDER_OBJECT_DEMO_SCRIPT.is_file():
+        print(
+            f"[make] missing direct sender object demo script: {MACOS_DIRECT_SENDER_OBJECT_DEMO_SCRIPT}",
+            file=sys.stderr,
+        )
+        return 2
+    cmd = [
+        sys.executable,
+        str(MACOS_DIRECT_SENDER_OBJECT_DEMO_SCRIPT),
+        "--width", str(args.width),
+        "--height", str(args.height),
+        "--fps", str(args.fps),
+        "--name", str(args.name),
+    ]
+    if getattr(args, "direct_sender_library", None):
+        cmd.extend(["--direct-sender-library", str(args.direct_sender_library)])
+    if getattr(args, "frame_kind", None):
+        cmd.extend(["--frame-kind", str(args.frame_kind)])
+    if getattr(args, "request_camera_access", False):
+        cmd.append("--request-camera-access")
+    if getattr(args, "probe_only", False):
+        cmd.append("--inspect-only")
+    if getattr(args, "frames", None) is not None:
+        cmd.extend(["--frames", str(args.frames)])
+    if getattr(args, "output", None):
+        cmd.extend(["--report-json", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_verify_native_macos(_: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_NATIVE_VERIFY_SCRIPT.is_file():
+        print(f"[make] missing native verify script: {MACOS_NATIVE_VERIFY_SCRIPT}", file=sys.stderr)
+        return 2
+    return _run([sys.executable, str(MACOS_NATIVE_VERIFY_SCRIPT)], cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_preflight_macos(_: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_TOOLCHAIN_PREFLIGHT_SCRIPT.is_file():
+        print(f"[make] missing toolchain preflight script: {MACOS_TOOLCHAIN_PREFLIGHT_SCRIPT}", file=sys.stderr)
+        return 2
+    return _run([sys.executable, str(MACOS_TOOLCHAIN_PREFLIGHT_SCRIPT)], cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_release_diagnostics_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_RELEASE_DIAGNOSTICS_SCRIPT.is_file():
+        print(f"[make] missing release diagnostics script: {MACOS_RELEASE_DIAGNOSTICS_SCRIPT}", file=sys.stderr)
+        return 2
+    cmd = [sys.executable, str(MACOS_RELEASE_DIAGNOSTICS_SCRIPT)]
+    if args.app_bundle:
+        cmd.extend(["--app-bundle", str(args.app_bundle)])
+    if args.extension_bundle:
+        cmd.extend(["--extension-bundle", str(args.extension_bundle)])
+    if args.pkg_path:
+        cmd.extend(["--pkg-path", str(args.pkg_path)])
+    if args.dmg_path:
+        cmd.extend(["--dmg-path", str(args.dmg_path)])
+    if args.zip_path:
+        cmd.extend(["--zip-path", str(args.zip_path)])
+    if getattr(args, "sync_ipc_tool", None):
+        cmd.extend(["--sync-ipc-tool", str(args.sync_ipc_tool)])
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_benchmark_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_BENCHMARK_SCRIPT.is_file():
+        print(f"[make] missing benchmark script: {MACOS_BENCHMARK_SCRIPT}", file=sys.stderr)
+        return 2
+    cmd = [sys.executable, str(MACOS_BENCHMARK_SCRIPT)]
+    if args.matrix:
+        cmd.append("--matrix")
+    elif args.profile:
+        cmd.extend(["--profile", str(args.profile)])
+    else:
+        cmd.extend([
+            "--width", str(args.width),
+            "--height", str(args.height),
+            "--fps", str(args.fps),
+        ])
+    cmd.extend([
+        "--duration", str(args.duration),
+        "--warmup", str(args.warmup),
+    ])
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_framebus_roundtrip_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_FRAMEBUS_ROUNDTRIP_SCRIPT.is_file():
+        print(f"[make] missing framebus roundtrip script: {MACOS_FRAMEBUS_ROUNDTRIP_SCRIPT}", file=sys.stderr)
+        return 2
+    cmd = [
+        sys.executable,
+        str(MACOS_FRAMEBUS_ROUNDTRIP_SCRIPT),
+        "--width", str(args.width),
+        "--height", str(args.height),
+        "--attempts", str(args.attempts),
+        "--sleep-ms", str(args.sleep_ms),
+        "--flags", str(args.flags),
+        "--producer-kind", str(args.producer_kind),
+    ]
+    if args.compiler:
+        cmd.extend(["--compiler", str(args.compiler)])
+    if args.binary:
+        cmd.extend(["--binary", str(args.binary)])
+    if args.skip_compile:
+        cmd.append("--skip-compile")
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_list_devices_binary_check_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_LIST_DEVICES_BINARY_CHECK_SCRIPT.is_file():
+        print(
+            f"[make] missing list-devices binary check script: {MACOS_LIST_DEVICES_BINARY_CHECK_SCRIPT}",
+            file=sys.stderr,
+        )
+        return 2
+    cmd = [sys.executable, str(MACOS_LIST_DEVICES_BINARY_CHECK_SCRIPT)]
+    if args.list_devices_tool:
+        cmd.extend(["--list-devices-tool", str(args.list_devices_tool)])
+    if getattr(args, "expected_prefix", None):
+        cmd.extend(["--expected-prefix", str(args.expected_prefix)])
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_validation_report_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_VALIDATION_REPORT_SCRIPT.is_file():
+        print(f"[make] missing validation report script: {MACOS_VALIDATION_REPORT_SCRIPT}", file=sys.stderr)
+        return 2
+    try:
+        app_bundle, app_executable = _resolve_macos_container_app_overrides(args)
+    except ValueError as exc:
+        print(f"[make] {exc}", file=sys.stderr)
+        return 2
+    cmd = [sys.executable, str(MACOS_VALIDATION_REPORT_SCRIPT)]
+    if getattr(args, "name", None):
+        cmd.extend(["--name", str(args.name)])
+    if args.status_tool:
+        cmd.extend(["--status-tool", str(args.status_tool)])
+    if args.list_devices_tool:
+        cmd.extend(["--list-devices-tool", str(args.list_devices_tool)])
+    if args.install_tool:
+        cmd.extend(["--install-tool", str(args.install_tool)])
+    if getattr(args, "uninstall_tool", None):
+        cmd.extend(["--uninstall-tool", str(args.uninstall_tool)])
+    if getattr(args, "sync_ipc_tool", None):
+        cmd.extend(["--sync-ipc-tool", str(args.sync_ipc_tool)])
+    _append_macos_container_app_flags(cmd, app_bundle=app_bundle, app_executable=app_executable)
+    if getattr(args, "direct_sender_library", None):
+        cmd.extend(["--direct-sender-library", str(args.direct_sender_library)])
+    if getattr(args, "pkg_path", None):
+        cmd.extend(["--pkg-path", str(args.pkg_path)])
+    if getattr(args, "installer_executable", None):
+        cmd.extend(["--installer-executable", str(args.installer_executable)])
+    if getattr(args, "disable_auto_package", False):
+        cmd.append("--disable-auto-package")
+    if args.preflight_json:
+        cmd.extend(["--preflight-json", str(args.preflight_json)])
+    if args.release_diagnostics_json:
+        cmd.extend(["--release-diagnostics-json", str(args.release_diagnostics_json)])
+    if args.install_session_json:
+        cmd.extend(["--install-session-json", str(args.install_session_json)])
+    if args.smoke_json:
+        cmd.extend(["--smoke-json", str(args.smoke_json)])
+    if args.framebus_roundtrip_json:
+        cmd.extend(["--framebus-roundtrip-json", str(args.framebus_roundtrip_json)])
+    if args.status_binary_check_json:
+        cmd.extend(["--status-binary-check-json", str(args.status_binary_check_json)])
+    if args.list_devices_binary_check_json:
+        cmd.extend(["--list-devices-binary-check-json", str(args.list_devices_binary_check_json)])
+    if args.benchmark_json:
+        cmd.extend(["--benchmark-json", str(args.benchmark_json)])
+    if args.demo_json:
+        cmd.extend(["--demo-json", str(args.demo_json)])
+    if args.manual_results:
+        cmd.extend(["--manual-results", str(args.manual_results)])
+    if args.write_manual_template:
+        cmd.extend(["--write-manual-template", str(args.write_manual_template)])
+    if args.run_install:
+        cmd.append("--run-install")
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_validation_session_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_VALIDATION_SESSION_SCRIPT.is_file():
+        print(f"[make] missing validation session script: {MACOS_VALIDATION_SESSION_SCRIPT}", file=sys.stderr)
+        return 2
+    try:
+        app_bundle, app_executable = _resolve_macos_container_app_overrides(args)
+    except ValueError as exc:
+        print(f"[make] {exc}", file=sys.stderr)
+        return 2
+    cmd = [
+        sys.executable,
+        str(MACOS_VALIDATION_SESSION_SCRIPT),
+        "--output-dir", str(args.output_dir),
+        "--benchmark-warmup", str(args.benchmark_warmup),
+        "--mode", args.mode,
+        "--width", str(args.width),
+        "--height", str(args.height),
+        "--fps", str(args.fps),
+        "--duration", str(args.duration),
+        "--name", args.name,
+    ]
+    if args.benchmark_profile:
+        cmd.extend(["--benchmark-profile", str(args.benchmark_profile)])
+    if args.benchmark_matrix:
+        cmd.append("--benchmark-matrix")
+    if args.video_path:
+        cmd.extend(["--video-path", str(args.video_path)])
+    if args.status_tool:
+        cmd.extend(["--status-tool", str(args.status_tool)])
+    if args.list_devices_tool:
+        cmd.extend(["--list-devices-tool", str(args.list_devices_tool)])
+    if args.install_tool:
+        cmd.extend(["--install-tool", str(args.install_tool)])
+    if getattr(args, "uninstall_tool", None):
+        cmd.extend(["--uninstall-tool", str(args.uninstall_tool)])
+    if getattr(args, "sync_ipc_tool", None):
+        cmd.extend(["--sync-ipc-tool", str(args.sync_ipc_tool)])
+    _append_macos_container_app_flags(cmd, app_bundle=app_bundle, app_executable=app_executable)
+    if getattr(args, "direct_sender_library", None):
+        cmd.extend(["--direct-sender-library", str(args.direct_sender_library)])
+    if getattr(args, "pkg_path", None):
+        cmd.extend(["--pkg-path", str(args.pkg_path)])
+    if getattr(args, "installer_executable", None):
+        cmd.extend(["--installer-executable", str(args.installer_executable)])
+    if getattr(args, "disable_auto_package", False):
+        cmd.append("--disable-auto-package")
+    if args.manual_results:
+        cmd.extend(["--manual-results", str(args.manual_results)])
+    if args.reuse_existing_artifacts:
+        cmd.append("--reuse-existing-artifacts")
+    if args.preflight_tool:
+        cmd.extend(["--preflight-tool", str(args.preflight_tool)])
+    if args.release_diagnostics_tool:
+        cmd.extend(["--release-diagnostics-tool", str(args.release_diagnostics_tool)])
+    if args.smoke_tool:
+        cmd.extend(["--smoke-tool", str(args.smoke_tool)])
+    if args.install_session_tool:
+        cmd.extend(["--install-session-tool", str(args.install_session_tool)])
+    if args.framebus_roundtrip_tool:
+        cmd.extend(["--framebus-roundtrip-tool", str(args.framebus_roundtrip_tool)])
+    if getattr(args, "framebus_producer_kind", None):
+        cmd.extend(["--framebus-producer-kind", str(args.framebus_producer_kind)])
+    if getattr(args, "direct_push_demo_tool", None):
+        cmd.extend(["--direct-push-demo-tool", str(args.direct_push_demo_tool)])
+    if getattr(args, "direct_push_frames", None) is not None:
+        cmd.extend(["--direct-push-frames", str(args.direct_push_frames)])
+    if getattr(args, "direct_push_frame_kind", None):
+        cmd.extend(["--direct-push-frame-kind", str(args.direct_push_frame_kind)])
+    if getattr(args, "direct_push_entrypoint", None):
+        cmd.extend(["--direct-push-entrypoint", str(args.direct_push_entrypoint)])
+    if getattr(args, "direct_push_allow_shared_memory_fallback", False):
+        cmd.append("--direct-push-allow-shared-memory-fallback")
+    if getattr(args, "direct_push_request_camera_access", False):
+        cmd.append("--direct-push-request-camera-access")
+    if getattr(args, "direct_sender_object_demo_tool", None):
+        cmd.extend(["--direct-sender-object-demo-tool", str(args.direct_sender_object_demo_tool)])
+    if getattr(args, "direct_sender_object_frames", None) is not None:
+        cmd.extend(["--direct-sender-object-frames", str(args.direct_sender_object_frames)])
+    if getattr(args, "direct_sender_object_frame_kind", None):
+        cmd.extend(["--direct-sender-object-frame-kind", str(args.direct_sender_object_frame_kind)])
+    if getattr(args, "direct_sender_object_request_camera_access", False):
+        cmd.append("--direct-sender-object-request-camera-access")
+    if args.status_binary_check_tool:
+        cmd.extend(["--status-binary-check-tool", str(args.status_binary_check_tool)])
+    if args.list_devices_binary_check_tool:
+        cmd.extend(["--list-devices-binary-check-tool", str(args.list_devices_binary_check_tool)])
+    if getattr(args, "sdk_contract_tool", None):
+        cmd.extend(["--sdk-contract-tool", str(args.sdk_contract_tool)])
+    if args.artifact_check_tool:
+        cmd.extend(["--artifact-check-tool", str(args.artifact_check_tool)])
+    if args.acceptance_tool:
+        cmd.extend(["--acceptance-tool", str(args.acceptance_tool)])
+    if args.summary_tool:
+        cmd.extend(["--summary-tool", str(args.summary_tool)])
+    if args.demo_tool:
+        cmd.extend(["--demo-tool", str(args.demo_tool)])
+    if args.benchmark_tool:
+        cmd.extend(["--benchmark-tool", str(args.benchmark_tool)])
+    if args.validation_report_tool:
+        cmd.extend(["--validation-report-tool", str(args.validation_report_tool)])
+    if args.skip_demo:
+        cmd.append("--skip-demo")
+    if args.skip_preflight:
+        cmd.append("--skip-preflight")
+    if args.skip_release_diagnostics:
+        cmd.append("--skip-release-diagnostics")
+    if args.skip_benchmark:
+        cmd.append("--skip-benchmark")
+    if args.run_install:
+        cmd.append("--run-install")
+    if args.run_uninstall:
+        cmd.append("--run-uninstall")
+    if args.run_install_session:
+        cmd.append("--run-install-session")
+    if args.run_framebus_roundtrip:
+        cmd.append("--run-framebus-roundtrip")
+    if getattr(args, "run_direct_push_demo", False):
+        cmd.append("--run-direct-push-demo")
+    if getattr(args, "run_direct_sender_object_demo", False):
+        cmd.append("--run-direct-sender-object-demo")
+    if args.run_status_binary_check:
+        cmd.append("--run-status-binary-check")
+    if args.run_list_devices_binary_check:
+        cmd.append("--run-list-devices-binary-check")
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_validation_session_artifact_check_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_VALIDATION_SESSION_ARTIFACT_CHECK_SCRIPT.is_file():
+        print(
+            f"[make] missing validation-session artifact check script: "
+            f"{MACOS_VALIDATION_SESSION_ARTIFACT_CHECK_SCRIPT}",
+            file=sys.stderr,
+        )
+        return 2
+    cmd = [
+        sys.executable,
+        str(MACOS_VALIDATION_SESSION_ARTIFACT_CHECK_SCRIPT),
+        "--manifest",
+        str(args.manifest),
+    ]
+    if args.require_existing_artifacts:
+        cmd.append("--require-existing-artifacts")
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_validation_session_acceptance_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_VALIDATION_SESSION_ACCEPTANCE_SCRIPT.is_file():
+        print(
+            f"[make] missing validation-session acceptance script: "
+            f"{MACOS_VALIDATION_SESSION_ACCEPTANCE_SCRIPT}",
+            file=sys.stderr,
+        )
+        return 2
+    cmd = [
+        sys.executable,
+        str(MACOS_VALIDATION_SESSION_ACCEPTANCE_SCRIPT),
+        "--manifest",
+        str(args.manifest),
+    ]
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_validation_session_acceptance_contract_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_VALIDATION_SESSION_ACCEPTANCE_CONTRACT_SCRIPT.is_file():
+        print(
+            f"[make] missing validation-session acceptance contract script: "
+            f"{MACOS_VALIDATION_SESSION_ACCEPTANCE_CONTRACT_SCRIPT}",
+            file=sys.stderr,
+        )
+        return 2
+    cmd = [
+        sys.executable,
+        str(MACOS_VALIDATION_SESSION_ACCEPTANCE_CONTRACT_SCRIPT),
+    ]
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_validation_session_summary_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_VALIDATION_SESSION_SUMMARY_SCRIPT.is_file():
+        print(
+            f"[make] missing validation-session summary script: "
+            f"{MACOS_VALIDATION_SESSION_SUMMARY_SCRIPT}",
+            file=sys.stderr,
+        )
+        return 2
+    cmd = [
+        sys.executable,
+        str(MACOS_VALIDATION_SESSION_SUMMARY_SCRIPT),
+        "--manifest",
+        str(args.manifest),
+    ]
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def cmd_install_session_macos(args: argparse.Namespace) -> int:
+    _check_macos()
+    if not MACOS_INSTALL_SESSION_SCRIPT.is_file():
+        print(f"[make] missing install session script: {MACOS_INSTALL_SESSION_SCRIPT}", file=sys.stderr)
+        return 2
+    try:
+        app_bundle, app_executable = _resolve_macos_container_app_overrides(args)
+    except ValueError as exc:
+        print(f"[make] {exc}", file=sys.stderr)
+        return 2
+    cmd = [sys.executable, str(MACOS_INSTALL_SESSION_SCRIPT)]
+    if getattr(args, "name", None):
+        cmd.extend(["--name", str(args.name)])
+    if args.status_tool:
+        cmd.extend(["--status-tool", str(args.status_tool)])
+    if args.install_tool:
+        cmd.extend(["--install-tool", str(args.install_tool)])
+    if args.list_devices_tool:
+        cmd.extend(["--list-devices-tool", str(args.list_devices_tool)])
+    if args.uninstall_tool:
+        cmd.extend(["--uninstall-tool", str(args.uninstall_tool)])
+    if getattr(args, "sync_ipc_tool", None):
+        cmd.extend(["--sync-ipc-tool", str(args.sync_ipc_tool)])
+    if args.pkg_path:
+        cmd.extend(["--pkg-path", str(args.pkg_path)])
+    _append_macos_container_app_flags(cmd, app_bundle=app_bundle, app_executable=app_executable)
+    if getattr(args, "direct_sender_library", None):
+        cmd.extend(["--direct-sender-library", str(args.direct_sender_library)])
+    if args.installer_executable:
+        cmd.extend(["--installer-executable", str(args.installer_executable)])
+    if args.framebus_roundtrip_json:
+        cmd.extend(["--framebus-roundtrip-json", str(args.framebus_roundtrip_json)])
+    if getattr(args, "direct_push_demo_tool", None):
+        cmd.extend(["--direct-push-demo-tool", str(args.direct_push_demo_tool)])
+    if getattr(args, "direct_push_frames", None) is not None:
+        cmd.extend(["--direct-push-frames", str(args.direct_push_frames)])
+    if getattr(args, "direct_push_frame_kind", None):
+        cmd.extend(["--direct-push-frame-kind", str(args.direct_push_frame_kind)])
+    if getattr(args, "direct_push_entrypoint", None):
+        cmd.extend(["--direct-push-entrypoint", str(args.direct_push_entrypoint)])
+    if getattr(args, "direct_push_allow_shared_memory_fallback", False):
+        cmd.append("--direct-push-allow-shared-memory-fallback")
+    if getattr(args, "direct_push_request_camera_access", False):
+        cmd.append("--direct-push-request-camera-access")
+    if getattr(args, "direct_sender_object_demo_tool", None):
+        cmd.extend(["--direct-sender-object-demo-tool", str(args.direct_sender_object_demo_tool)])
+    if getattr(args, "direct_sender_object_frames", None) is not None:
+        cmd.extend(["--direct-sender-object-frames", str(args.direct_sender_object_frames)])
+    if getattr(args, "direct_sender_object_frame_kind", None):
+        cmd.extend(["--direct-sender-object-frame-kind", str(args.direct_sender_object_frame_kind)])
+    if getattr(args, "direct_sender_object_request_camera_access", False):
+        cmd.append("--direct-sender-object-request-camera-access")
+    if args.disable_auto_package:
+        cmd.append("--disable-auto-package")
+    if args.run_uninstall:
+        cmd.append("--run-uninstall")
+    if getattr(args, "run_direct_push_demo", False):
+        cmd.append("--run-direct-push-demo")
+    if getattr(args, "run_direct_sender_object_demo", False):
+        cmd.append("--run-direct-sender-object-demo")
+    if args.status_poll_attempts is not None:
+        cmd.extend(["--status-poll-attempts", str(args.status_poll_attempts)])
+    if args.poll_interval_seconds is not None:
+        cmd.extend(["--poll-interval-seconds", str(args.poll_interval_seconds)])
+    if args.output:
+        cmd.extend(["--output", str(args.output)])
+    return _run(cmd, cwd=ROOT, env=_macos_script_env())
+
+
+def _sync_macos_runtime_assets(*, require_pkg: bool) -> int:
+    assets = {
+        "akvc-macos-status": MACOS_STATUS_TOOL,
+        "akvc-macos-install": MACOS_INSTALL_TOOL,
+        "akvc-macos-uninstall": MACOS_UNINSTALL_TOOL,
+        "akvc-macos-list-devices": MACOS_LIST_DEVICES_TOOL,
+        "akvc-macos-sync-ipc": MACOS_SYNC_IPC_TOOL,
+        "libakvc-macos-direct-sender.dylib": MACOS_DIRECT_SENDER_LIB,
+    }
+    if require_pkg:
+        assets["VirtualCamera.pkg"] = MACOS_PKG
+    elif MACOS_PKG.is_file():
+        assets["VirtualCamera.pkg"] = MACOS_PKG
+
+    missing = [name for name, path in assets.items() if not path.is_file()]
+    if missing:
+        print(
+            "[make] missing macOS runtime assets: " + ", ".join(missing),
+            file=sys.stderr,
+        )
+        return 2
+
+    MACOS_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    for name, src in assets.items():
+        dst = MACOS_RUNTIME_DIR / name
+        shutil.copy2(src, dst)
+        if dst.name != "VirtualCamera.pkg":
+            dst.chmod(0o755)
+        print(f"[make] synced macOS runtime asset: {dst}")
+    return 0
+
+
+def cmd_sync_macos_runtime(args: argparse.Namespace) -> int:
+    return _sync_macos_runtime_assets(require_pkg=bool(args.require_pkg))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -900,9 +1877,298 @@ def main(argv: list[str] | None = None) -> int:
     pb = sub.add_parser("build")
     pb.add_argument("--python", action="store_true",
                     help="also pip install -e the Python packages")
+    pb.add_argument("--archs",
+                    help='override macOS build ARCHS (default: "arm64 x86_64")')
+    pb.add_argument("--deployment-target",
+                    help='override macOS deployment target (default: "13.0")')
     pb.set_defaults(func="build")
     sub.add_parser("register").set_defaults(func="register")
     sub.add_parser("unregister").set_defaults(func="unregister")
+    pp = sub.add_parser("package")
+    pp.add_argument("--skip-build", action="store_true",
+                    help="skip xcodebuild and package current build outputs")
+    pp.add_argument("--archs",
+                    help='override macOS build ARCHS before packaging (default: "arm64 x86_64")')
+    pp.add_argument("--deployment-target",
+                    help='override macOS deployment target before packaging (default: "13.0")')
+    pp.add_argument("--sync-runtime", action="store_true",
+                    help="copy packaged macOS runtime assets into camera-core/src/akvc/_runtime/macos")
+    pp.set_defaults(func="package")
+    sub.add_parser("sign").set_defaults(func="sign")
+    pn = sub.add_parser("notarize")
+    pn.add_argument("--app-bundle")
+    pn.add_argument("--pkg-path")
+    pn.add_argument("--dmg-path")
+    pn.add_argument("--zip-path")
+    pn.add_argument("--targets",
+                    help='comma-separated notarization targets (default script behavior: "app,pkg")')
+    pn.add_argument("--notary-profile",
+                    help="override NOTARY_PROFILE for notarytool keychain profile selection")
+    pn.set_defaults(func="notarize")
+    pst = sub.add_parser("staple")
+    pst.add_argument("--app-bundle")
+    pst.add_argument("--pkg-path")
+    pst.add_argument("--dmg-path")
+    pst.add_argument("--targets",
+                     help='comma-separated staple targets (default script behavior: "app,pkg")')
+    pst.set_defaults(func="staple")
+    ps = sub.add_parser("smoke")
+    ps.add_argument("--name", default="AK Virtual Camera",
+                    help="runtime virtual camera name to persist before smoke checks")
+    ps.add_argument("--status-tool")
+    ps.add_argument("--install-tool")
+    ps.add_argument("--list-devices-tool")
+    ps.add_argument("--uninstall-tool")
+    ps.add_argument("--sync-ipc-tool")
+    ps.add_argument("--direct-push-demo-tool")
+    ps.add_argument("--direct-push-frames", type=int)
+    ps.add_argument("--direct-push-frame-kind")
+    ps.add_argument("--direct-push-entrypoint")
+    ps.add_argument("--direct-push-allow-shared-memory-fallback", action="store_true")
+    ps.add_argument("--direct-push-request-camera-access", action="store_true")
+    ps.add_argument("--direct-sender-object-demo-tool")
+    ps.add_argument("--direct-sender-object-frames", type=int)
+    ps.add_argument("--direct-sender-object-frame-kind")
+    ps.add_argument("--direct-sender-object-request-camera-access", action="store_true")
+    ps.add_argument("--pkg-path")
+    ps.add_argument("--app-bundle")
+    ps.add_argument("--app-executable")
+    ps.add_argument("--host-bundle")
+    ps.add_argument("--host-executable")
+    ps.add_argument("--direct-sender-library")
+    ps.add_argument("--installer-executable")
+    ps.add_argument("--disable-auto-package", action="store_true")
+    ps.add_argument("--run-install", action="store_true",
+                    help="also run the install tool during smoke validation")
+    ps.add_argument("--run-uninstall", action="store_true",
+                    help="also run the uninstall tool during smoke validation")
+    ps.add_argument("--run-direct-push-demo", action="store_true")
+    ps.add_argument("--run-direct-sender-object-demo", action="store_true")
+    ps.add_argument("--framebus-roundtrip-json",
+                    help="attach an existing framebus roundtrip JSON artifact to smoke status resolution")
+    ps.add_argument("--output",
+                    help="write structured smoke JSON to this path")
+    ps.set_defaults(func="smoke")
+    pdpd = sub.add_parser("direct-push-demo")
+    pdpd.add_argument("--width", type=int, default=1280)
+    pdpd.add_argument("--height", type=int, default=720)
+    pdpd.add_argument("--fps", type=float, default=30.0)
+    pdpd.add_argument("--duration", type=float, default=3.0)
+    pdpd.add_argument("--frames", type=int)
+    pdpd.add_argument("--name", default="AK Virtual Camera")
+    pdpd.add_argument("--app-bundle")
+    pdpd.add_argument("--app-executable")
+    pdpd.add_argument("--host-bundle")
+    pdpd.add_argument("--host-executable")
+    pdpd.add_argument("--direct-sender-library")
+    pdpd.add_argument("--frame-kind")
+    pdpd.add_argument("--entrypoint")
+    pdpd.add_argument("--allow-shared-memory-fallback", action="store_true")
+    pdpd.add_argument("--request-camera-access", action="store_true")
+    pdpd.add_argument("--require-direct-runtime", action="store_true")
+    pdpd.add_argument("--probe-only", "--inspect-only", dest="probe_only", action="store_true")
+    pdpd.add_argument("--output")
+    pdpd.set_defaults(func="direct-push-demo")
+    pdso = sub.add_parser("direct-sender-object-demo")
+    pdso.add_argument("--width", type=int, default=1280)
+    pdso.add_argument("--height", type=int, default=720)
+    pdso.add_argument("--fps", type=float, default=30.0)
+    pdso.add_argument("--frames", type=int)
+    pdso.add_argument("--name", default="AK Virtual Camera")
+    pdso.add_argument("--direct-sender-library")
+    pdso.add_argument("--frame-kind")
+    pdso.add_argument("--request-camera-access", action="store_true")
+    pdso.add_argument("--probe-only", "--inspect-only", dest="probe_only", action="store_true")
+    pdso.add_argument("--output")
+    pdso.set_defaults(func="direct-sender-object-demo")
+    sub.add_parser("preflight").set_defaults(func="preflight")
+    prd = sub.add_parser("release-diagnostics")
+    prd.add_argument("--app-bundle")
+    prd.add_argument("--extension-bundle")
+    prd.add_argument("--pkg-path")
+    prd.add_argument("--dmg-path")
+    prd.add_argument("--zip-path")
+    prd.add_argument("--sync-ipc-tool")
+    prd.add_argument("--output")
+    prd.set_defaults(func="release-diagnostics")
+    sub.add_parser("verify-native").set_defaults(func="verify-native")
+    pbm = sub.add_parser("benchmark")
+    pbm.add_argument("--width", type=int, default=1920)
+    pbm.add_argument("--height", type=int, default=1080)
+    pbm.add_argument("--fps", type=float, default=60.0)
+    pbm.add_argument("--duration", type=float, default=5.0)
+    pbm.add_argument("--warmup", type=float, default=1.0)
+    pbm.add_argument("--profile", choices=["720p30", "720p60", "1080p30", "1080p60", "4k30", "4k60"])
+    pbm.add_argument("--matrix", action="store_true")
+    pbm.add_argument("--output")
+    pbm.set_defaults(func="benchmark")
+    pfr = sub.add_parser("framebus-roundtrip")
+    pfr.add_argument("--width", type=int, default=128)
+    pfr.add_argument("--height", type=int, default=72)
+    pfr.add_argument("--compiler")
+    pfr.add_argument("--binary", type=Path)
+    pfr.add_argument("--skip-compile", action="store_true")
+    pfr.add_argument("--attempts", type=int, default=8)
+    pfr.add_argument("--sleep-ms", type=int, default=25)
+    pfr.add_argument("--flags", type=int, default=2)
+    pfr.add_argument("--producer-kind", choices=["shm-sink", "mac-virtual-camera"], default="shm-sink")
+    pfr.add_argument("--output")
+    pfr.set_defaults(func="framebus-roundtrip")
+    pld = sub.add_parser("list-devices-binary-check")
+    pld.add_argument("--list-devices-tool")
+    pld.add_argument("--expected-prefix")
+    pld.add_argument("--output")
+    pld.set_defaults(func="list-devices-binary-check")
+    pvr = sub.add_parser("validation-report")
+    pvr.add_argument("--status-tool")
+    pvr.add_argument("--list-devices-tool")
+    pvr.add_argument("--install-tool")
+    pvr.add_argument("--uninstall-tool")
+    pvr.add_argument("--sync-ipc-tool")
+    pvr.add_argument("--app-bundle")
+    pvr.add_argument("--app-executable")
+    pvr.add_argument("--host-bundle")
+    pvr.add_argument("--host-executable")
+    pvr.add_argument("--pkg-path")
+    pvr.add_argument("--installer-executable")
+    pvr.add_argument("--disable-auto-package", action="store_true")
+    pvr.add_argument("--preflight-json")
+    pvr.add_argument("--release-diagnostics-json")
+    pvr.add_argument("--install-session-json")
+    pvr.add_argument("--smoke-json")
+    pvr.add_argument("--framebus-roundtrip-json")
+    pvr.add_argument("--status-binary-check-json")
+    pvr.add_argument("--list-devices-binary-check-json")
+    pvr.add_argument("--benchmark-json")
+    pvr.add_argument("--demo-json")
+    pvr.add_argument("--manual-results")
+    pvr.add_argument("--write-manual-template")
+    pvr.add_argument("--name", default="AK Virtual Camera")
+    pvr.add_argument("--run-install", action="store_true")
+    pvr.add_argument("--output")
+    pvr.set_defaults(func="validation-report")
+    pvs = sub.add_parser("validation-session")
+    pvs.add_argument("--output-dir", required=True)
+    pvs.add_argument("--status-tool")
+    pvs.add_argument("--list-devices-tool")
+    pvs.add_argument("--install-tool")
+    pvs.add_argument("--uninstall-tool")
+    pvs.add_argument("--sync-ipc-tool")
+    pvs.add_argument("--app-bundle")
+    pvs.add_argument("--app-executable")
+    pvs.add_argument("--host-bundle")
+    pvs.add_argument("--host-executable")
+    pvs.add_argument("--direct-sender-library")
+    pvs.add_argument("--pkg-path")
+    pvs.add_argument("--installer-executable")
+    pvs.add_argument("--disable-auto-package", action="store_true")
+    pvs.add_argument("--manual-results")
+    pvs.add_argument("--reuse-existing-artifacts", action="store_true")
+    pvs.add_argument("--preflight-tool")
+    pvs.add_argument("--release-diagnostics-tool")
+    pvs.add_argument("--smoke-tool")
+    pvs.add_argument("--install-session-tool")
+    pvs.add_argument("--framebus-roundtrip-tool")
+    pvs.add_argument("--framebus-producer-kind", choices=["shm-sink", "mac-virtual-camera"], default="mac-virtual-camera")
+    pvs.add_argument("--direct-push-demo-tool")
+    pvs.add_argument("--direct-push-frames", type=int)
+    pvs.add_argument("--direct-push-frame-kind")
+    pvs.add_argument("--direct-push-entrypoint")
+    pvs.add_argument("--direct-push-allow-shared-memory-fallback", action="store_true")
+    pvs.add_argument("--direct-push-request-camera-access", action="store_true")
+    pvs.add_argument("--direct-sender-object-demo-tool")
+    pvs.add_argument("--direct-sender-object-frames", type=int)
+    pvs.add_argument("--direct-sender-object-frame-kind")
+    pvs.add_argument("--direct-sender-object-request-camera-access", action="store_true")
+    pvs.add_argument("--status-binary-check-tool")
+    pvs.add_argument("--list-devices-binary-check-tool")
+    pvs.add_argument("--sdk-contract-tool")
+    pvs.add_argument("--artifact-check-tool")
+    pvs.add_argument("--acceptance-tool")
+    pvs.add_argument("--summary-tool")
+    pvs.add_argument("--demo-tool")
+    pvs.add_argument("--benchmark-tool")
+    pvs.add_argument("--validation-report-tool")
+    pvs.add_argument("--skip-preflight", action="store_true")
+    pvs.add_argument("--skip-release-diagnostics", action="store_true")
+    pvs.add_argument("--skip-demo", action="store_true")
+    pvs.add_argument("--skip-benchmark", action="store_true")
+    pvs.add_argument("--run-install", action="store_true")
+    pvs.add_argument("--run-uninstall", action="store_true")
+    pvs.add_argument("--run-install-session", action="store_true")
+    pvs.add_argument("--run-framebus-roundtrip", action="store_true")
+    pvs.add_argument("--run-direct-push-demo", action="store_true")
+    pvs.add_argument("--run-direct-sender-object-demo", action="store_true")
+    pvs.add_argument("--run-status-binary-check", action="store_true")
+    pvs.add_argument("--run-list-devices-binary-check", action="store_true")
+    pvs.add_argument("--benchmark-profile", choices=["720p30", "720p60", "1080p30", "1080p60", "4k30", "4k60"])
+    pvs.add_argument("--benchmark-matrix", action="store_true")
+    pvs.add_argument("--benchmark-warmup", type=float, default=1.0)
+    pvs.add_argument(
+        "--mode",
+        choices=["numpy-direct", "provider", "latest-provider", "image", "pixmap", "widget", "screen", "video-file"],
+        default="provider",
+    )
+    pvs.add_argument("--video-path")
+    pvs.add_argument("--width", type=int, default=1280)
+    pvs.add_argument("--height", type=int, default=720)
+    pvs.add_argument("--fps", type=float, default=30.0)
+    pvs.add_argument("--duration", type=float, default=5.0)
+    pvs.add_argument("--name", default="AK Virtual Camera")
+    pvs.set_defaults(func="validation-session")
+    pvsa = sub.add_parser("validation-session-artifact-check")
+    pvsa.add_argument("--manifest", default=str(MACOS_BUILD / "session" / "session-manifest.json"))
+    pvsa.add_argument("--require-existing-artifacts", action="store_true")
+    pvsa.add_argument("--output")
+    pvsa.set_defaults(func="validation-session-artifact-check")
+    pvsu = sub.add_parser("validation-session-acceptance")
+    pvsu.add_argument("--manifest", default=str(MACOS_BUILD / "session" / "session-manifest.json"))
+    pvsu.add_argument("--output")
+    pvsu.set_defaults(func="validation-session-acceptance")
+    pvsuc = sub.add_parser("validation-session-acceptance-contract")
+    pvsuc.add_argument("--output")
+    pvsuc.set_defaults(func="validation-session-acceptance-contract")
+    pvss = sub.add_parser("validation-session-summary")
+    pvss.add_argument("--manifest", default=str(MACOS_BUILD / "session" / "session-manifest.json"))
+    pvss.add_argument("--output")
+    pvss.set_defaults(func="validation-session-summary")
+    pis = sub.add_parser("install-session")
+    pis.add_argument("--status-tool")
+    pis.add_argument("--install-tool")
+    pis.add_argument("--list-devices-tool")
+    pis.add_argument("--uninstall-tool")
+    pis.add_argument("--sync-ipc-tool")
+    pis.add_argument("--direct-push-demo-tool")
+    pis.add_argument("--direct-push-frames", type=int)
+    pis.add_argument("--direct-push-frame-kind")
+    pis.add_argument("--direct-push-entrypoint")
+    pis.add_argument("--direct-push-allow-shared-memory-fallback", action="store_true")
+    pis.add_argument("--direct-push-request-camera-access", action="store_true")
+    pis.add_argument("--direct-sender-object-demo-tool")
+    pis.add_argument("--direct-sender-object-frames", type=int)
+    pis.add_argument("--direct-sender-object-frame-kind")
+    pis.add_argument("--direct-sender-object-request-camera-access", action="store_true")
+    pis.add_argument("--pkg-path")
+    pis.add_argument("--app-bundle")
+    pis.add_argument("--app-executable")
+    pis.add_argument("--host-bundle")
+    pis.add_argument("--host-executable")
+    pis.add_argument("--direct-sender-library")
+    pis.add_argument("--installer-executable")
+    pis.add_argument("--framebus-roundtrip-json")
+    pis.add_argument("--disable-auto-package", action="store_true")
+    pis.add_argument("--name", default="AK Virtual Camera")
+    pis.add_argument("--run-uninstall", action="store_true")
+    pis.add_argument("--run-direct-push-demo", action="store_true")
+    pis.add_argument("--run-direct-sender-object-demo", action="store_true")
+    pis.add_argument("--status-poll-attempts", type=int)
+    pis.add_argument("--poll-interval-seconds", type=float)
+    pis.add_argument("--output")
+    pis.set_defaults(func="install-session")
+    psr = sub.add_parser("sync-macos-runtime")
+    psr.add_argument("--require-pkg", action="store_true",
+                     help="fail if VirtualCamera.pkg is missing instead of syncing tools only")
+    psr.set_defaults(func="sync-macos-runtime")
     sub.add_parser("run").set_defaults(func="run")
     sub.add_parser("test").set_defaults(func="test")
     pi = sub.add_parser("install-runtime")
@@ -920,6 +2186,27 @@ def main(argv: list[str] | None = None) -> int:
         "build":      cmd_build_macos     if is_mac else cmd_build,
         "register":   cmd_register_macos  if is_mac else cmd_register,
         "unregister": cmd_unregister_macos if is_mac else cmd_unregister,
+        "package":    cmd_package_macos   if is_mac else cmd_build,
+        "sign":       cmd_sign_macos      if is_mac else cmd_register,
+        "notarize":   cmd_notarize_macos  if is_mac else cmd_register,
+        "staple":     cmd_staple_macos    if is_mac else cmd_register,
+        "smoke":      cmd_smoke_macos     if is_mac else cmd_test,
+        "direct-push-demo": cmd_direct_push_demo_macos if is_mac else cmd_test,
+        "direct-sender-object-demo": cmd_direct_sender_object_demo_macos if is_mac else cmd_test,
+        "preflight":  cmd_preflight_macos if is_mac else cmd_test,
+        "release-diagnostics": cmd_release_diagnostics_macos if is_mac else cmd_test,
+        "verify-native": cmd_verify_native_macos if is_mac else cmd_test,
+        "benchmark":  cmd_benchmark_macos if is_mac else cmd_test,
+        "framebus-roundtrip": cmd_framebus_roundtrip_macos if is_mac else cmd_test,
+        "list-devices-binary-check": cmd_list_devices_binary_check_macos if is_mac else cmd_test,
+        "validation-report": cmd_validation_report_macos if is_mac else cmd_test,
+        "validation-session": cmd_validation_session_macos if is_mac else cmd_test,
+        "validation-session-artifact-check": cmd_validation_session_artifact_check_macos if is_mac else cmd_test,
+        "validation-session-acceptance": cmd_validation_session_acceptance_macos if is_mac else cmd_test,
+        "validation-session-acceptance-contract": cmd_validation_session_acceptance_contract_macos if is_mac else cmd_test,
+        "validation-session-summary": cmd_validation_session_summary_macos if is_mac else cmd_test,
+        "install-session": cmd_install_session_macos if is_mac else cmd_test,
+        "sync-macos-runtime": cmd_sync_macos_runtime if is_mac else cmd_test,
         "run":        cmd_run,
         "test":       cmd_test,
         "install_runtime": cmd_install_runtime,

@@ -24,6 +24,38 @@ After install you can use:
 from akvc.sdk import VirtualCamera
 ```
 
+If your host app needs to bundle the AKVC native runtime into its own package
+layout, the package now also exposes distribution helpers:
+
+```python
+from akvc.distribution import prepare_macos_host_runtime
+
+prepared = prepare_macos_host_runtime(
+    "dist/amaran Desktop.app",
+    app_executable="dist/amaran Desktop.app/Contents/MacOS/amaran Desktop",
+    embed_extension=True,
+)
+layout = prepared.layout
+env = prepared.env
+```
+
+That pattern is intended for external desktop apps such as `amaran-desktop`:
+- `pip install` the SDK package
+- copy packaged AKVC runtime assets into your own app bundle/resources
+- optionally embed the generated `.systemextension` into `Contents/Library/SystemExtensions`
+- pass the returned env vars into your app's virtual-camera backend
+
+If you want the install step itself to generate the local macOS build outputs
+before packaging the Python wheel/editable install, set:
+
+```bash
+AKVC_BUILD_MACOS_RUNTIME=1 pip install -e .
+```
+
+Optional overrides:
+- `AKVC_MACOS_ARCHS="arm64 x86_64"`
+- `AKVC_MACOS_DEPLOYMENT_TARGET=13.0`
+
 The package builds and bundles the Windows runtime assets during installation:
 - `akvc_helper.exe`
 - `akvc-mf.dll`
@@ -41,6 +73,56 @@ vc.start(name="AK Virtual Camera")
 frame = np.zeros((720, 1280, 3), dtype=np.uint8)
 vc.push_frame(frame)
 vc.shutdown()
+```
+
+On macOS you can also bind the default target name at construction time and
+let the first `send()` / `push_frame()` trigger an implicit startup:
+
+```python
+import numpy as np
+from akvc.sdk import VirtualCamera
+
+vc = VirtualCamera(
+    width=1280,
+    height=720,
+    fps=30,
+    camera_name="AK Virtual Camera",
+    direct_only=True,
+)
+
+frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+vc.send(frame)
+vc.shutdown()
+```
+
+On macOS, if you want the closest path to
+`/Users/admir/workspace/cameraextension/vcam.mm` and do not want a helper in
+the frame hot path, you can also use the native direct-sender object directly:
+
+```python
+import numpy as np
+from akvc import MacDirectCameraSender
+
+sender = MacDirectCameraSender(
+    width=1280,
+    height=720,
+    fps=30.0,
+    camera_name="AK Virtual Camera",
+)
+try:
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    sender.send(frame)
+finally:
+    sender.stop()
+```
+
+If you prefer to stay on the higher-level SDK surface while still requiring the
+pure macOS direct path, use:
+
+```python
+from akvc.sdk import VirtualCamera
+
+vc = VirtualCamera(width=1280, height=720, fps=30, direct_only=True)
 ```
 
 Important:

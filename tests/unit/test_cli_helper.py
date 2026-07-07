@@ -64,7 +64,7 @@ class FakeHelper:
 
 def test_cli_imports_helper_and_runtime_from_akvc() -> None:
     assert cli.HelperService.__module__ == "akvc.helper_service"
-    assert cli.find_dshow_dll.__module__ == "akvc.windows_runtime"
+    assert cli.find_dshow_dll.__module__ == "akvc.runtime"
 
 
 def test_cmd_helper_install_uses_helper(monkeypatch, capsys) -> None:

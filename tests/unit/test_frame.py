@@ -43,8 +43,31 @@ def test_from_bgr_basic() -> None:
     assert f.data.size == 360 * 640 * 3
 
 
+def test_from_bgr_bytes_basic() -> None:
+    payload = bytearray([1, 2, 3, 4, 5, 6])
+    f = Frame.from_bgr_bytes(width=2, height=1, data=payload)
+    assert f.fourcc == FourCC.RGB24
+    assert f.width == 2
+    assert f.height == 1
+    assert f.stride == (6, 0)
+    assert f.plane_size == (6, 0)
+    assert bytes(f.data) == bytes(payload)
+
+
+def test_from_bgra_bytes_basic() -> None:
+    payload = bytearray([1, 2, 3, 255, 4, 5, 6, 255])
+    f = Frame.from_bgra_bytes(width=2, height=1, data=payload)
+    assert f.fourcc == FourCC.BGRA32
+    assert f.width == 2
+    assert f.height == 1
+    assert f.stride == (8, 0)
+    assert f.plane_size == (8, 0)
+    assert bytes(f.data) == bytes(payload)
+
+
 def test_fourcc_names() -> None:
     assert FourCC.name(FourCC.NV12) == "NV12"
     assert FourCC.name(FourCC.YUY2) == "YUY2"
     assert FourCC.name(FourCC.RGB24) == "RGB24"
+    assert FourCC.name(FourCC.BGRA32) == "BGRA32"
     assert FourCC.name(0xDEADBEEF) == "0xDEADBEEF"
