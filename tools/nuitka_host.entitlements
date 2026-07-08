@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/Property-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Host app entitlements for the Nuitka-packaged AK Virtual Camera (debug).
+         The camera extension itself uses CameraExtension.entitlements. -->
+    <key>com.apple.developer.system-extension.install</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <!-- PySide6 / Qt relaxation (debug; Hardened Runtime would otherwise block) -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

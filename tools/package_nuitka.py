@@ -185,6 +185,44 @@ def embed_extension(app: Path) -> None:
     print(f"[package] embedded camera extension: {dest}")
 
 
+def sign_bundle(app: Path) -> None:
+    """Sign the app + embedded extension so the system accepts the
+    OSSystemExtensionRequest. Debug = ad-hoc ('-'); set AKVC_SIGN_IDENTITY
+    (e.g. 'Developer ID Application: ...') for a real identity.
+
+    Order: sign the host app deep first (covers PySide6/Python nested
+    binaries with Hardened Runtime + host entitlements), then re-sign the
+    embedded extension with its own (camera-extension sandbox) entitlements
+    -- --deep would otherwise overwrite them."""
+    identity = os.environ.get("AKVC_SIGN_IDENTITY", "-")
+    ext_ent = ROOT / "virtualcam" / "macos" / "camera_extension" / "CameraExtension.entitlements"
+    host_ent = ROOT / "tools" / "nuitka_host.entitlements"
+    ext_dir = app / "Contents" / "Library" / "SystemExtensions"
+
+    print(f"[package] signing bundle (identity={identity})...")
+    host_cmd = ["codesign", "--force", "--options", "runtime", "--deep",
+                "--timestamp=none", "-s", identity]
+    if host_ent.is_file():
+        host_cmd += ["--entitlements", str(host_ent)]
+    host_cmd += [str(app)]
+    rc = _run(host_cmd)
+    if rc != 0:
+        print(f"[package] warning: codesign host app rc={rc} (the app may still "
+              "run in developer mode)", file=sys.stderr)
+
+    for ext in ext_dir.glob("*.systemextension"):
+        ext_cmd = ["codesign", "--force", "--options", "runtime", "--timestamp=none",
+                   "-s", identity]
+        if ext_ent.is_file():
+            ext_cmd += ["--entitlements", str(ext_ent)]
+        ext_cmd += [str(ext)]
+        rc = _run(ext_cmd)
+        if rc != 0:
+            print(f"[package] warning: codesign extension rc={rc}", file=sys.stderr)
+
+    _run(["codesign", "--verify", "--verbose=2", str(app)])
+
+
 def main() -> int:
     if sys.platform != "darwin":
         print(f"[package] this script is macOS-only (sys.platform={sys.platform})", file=sys.stderr)
@@ -210,6 +248,7 @@ def main() -> int:
             sys.exit(f"[package] expected {BUNDLE_NAME} not found in {DIST_DIR}; "
                      f"found: {[a.name for a in apps]}")
     embed_extension(app)
+    sign_bundle(app)
     print(f"[package] done: {app}")
     print("[package] open it, or for VC-M-1 first run: "
           "systemextensionsctl developer on  (debug) + approve the extension prompt.")
