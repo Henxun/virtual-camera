@@ -89,7 +89,9 @@ if(MSVC)
 endif()
 
 # ---- akvc_camera_python: thin pybind11 binding for apps/desktop ------------
-if(WIN32)
+# Built on Windows AND macOS - the desktop app drives the C++ layer via this
+# binding on both platforms. (Linux would work too if a session is added.)
+if(WIN32 OR APPLE)
     find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
     if(NOT pybind11_DIR)
         execute_process(
@@ -106,15 +108,23 @@ if(WIN32)
     pybind11_add_module(akvc_camera_python bindings/python/module.cpp)
     target_link_libraries(akvc_camera_python PRIVATE akvc_camera)
     target_include_directories(akvc_camera_python PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-    set_target_properties(akvc_camera_python PROPERTIES
-        OUTPUT_NAME "akvc_camera"
-        PREFIX ""
-        SUFFIX ".pyd"
-        # Route the module's import-library byproduct to a separate dir so it
-        # does not collide with the akvc_camera static lib of the same basename.
-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib_py"
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
-    )
+    if(WIN32)
+        set_target_properties(akvc_camera_python PROPERTIES
+            OUTPUT_NAME "akvc_camera"
+            PREFIX ""
+            SUFFIX ".pyd"
+            # Route the module's import-library byproduct to a separate dir so it
+            # does not collide with the akvc_camera static lib of the same basename.
+            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib_py"
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+        )
+    else()
+        # macOS: pybind11_add_module sets the Python extension suffix (.so).
+        set_target_properties(akvc_camera_python PROPERTIES
+            OUTPUT_NAME "akvc_camera"
+            PREFIX ""
+        )
+    endif()
 endif()
 
 # ---- Tests (self-contained, no external framework) -------------------------
