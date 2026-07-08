@@ -156,9 +156,12 @@ class RuntimeHost:
                 self._width, self._height, self._target_fps, self._camera_name, self._helper_exe
             )
             st = vc.start()
+            log.info("akvc.runtime.start_result status=%s err=%r", st, vc.last_error)
             if st != akvc_camera.Status.Ok:
                 self._set(last_error=vc.last_error or "VirtualCamera.start failed")
+                log.error("akvc.runtime.start_failed status=%s err=%s", st, self._last_error)
                 return
+            log.info("akvc.runtime.start_ok")
 
             last_metrics_t = time.perf_counter()
             last_preview_t = 0.0
@@ -221,3 +224,5 @@ class RuntimeHost:
                 pass
             with self._mu:
                 self._running = False
+            log.info("akvc.runtime.exit published=%d dropped=%d err=%r",
+                     self._frames_published, self._frames_dropped, self._last_error)
