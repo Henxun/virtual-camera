@@ -75,3 +75,34 @@ the preview shows it. Record results in the acceptance table (VC-M-2..5).
 user's explicit design decision (2026-07-08). CLAUDE.md §4 lists
 `OSSystemExtensionRequest` as a human-authorization-gated action; the design is
 authorized, and runtime execution still shows the macOS system approval dialog.
+
+## 0. Package the desktop app with Nuitka (for end-to-end macOS verification)
+
+`tools/package_nuitka.py` produces a standalone `dist/AKVirtualCamera.app` that
+bundles the PySide6 desktop app + the C++ `akvc_camera` pybind binding, and
+embeds the camera extension under `Contents/Library/SystemExtensions/` (if you
+built it via `python tools/make.py build`).
+
+```sh
+pip install nuitka
+python tools/package_nuitka.py
+```
+
+The script:
+1. Builds the C++ `akvc_camera_python` target (cmake) if `akvc_camera.so` is missing.
+2. Runs Nuitka (`--standalone --macos-create-app-bundle --enable-plugin=pyside6
+   --include-module=akvc_camera --include-package=akvc_app`) on
+   `apps/desktop/main.py` (a top-level entry that avoids relative-import issues).
+3. Embeds `com.sidus.amaran-desktop.cameraextension.systemextension` into the
+   `.app` bundle if present.
+
+Then open `dist/AKVirtualCamera.app`, approve the system-extension prompt
+(`systemextensionsctl developer on` first for debug), and verify VC-M-2..5
+(FaceTime/Zoom/Safari/OBS).
+
+> NOTE: the script is authored on Windows and is best-effort for macOS. If
+> Nuitka or the linker reports missing modules/symbols, adjust the `--include-*`
+> flags or the `akvc_camera_macos` source list in `camera-core/CMakeLists.txt`.
+> The `akvc_camera.so` links the macOS frameworks (Foundation/AVFoundation/
+> CoreMedia/CoreMediaIO/CoreVideo/SystemExtensions) statically via the
+> `akvc_camera_macos` lib; Nuitka's standalone mode bundles the dylib deps.
