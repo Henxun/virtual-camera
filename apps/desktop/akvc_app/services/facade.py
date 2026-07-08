@@ -60,7 +60,10 @@ _PATTERN_SOURCES = [
 
 
 def _default_settings_opener() -> int:
-    return _load_macos_facade_bindings()["open_macos_install_settings"]()
+    # The macOS install-settings opener was backed by the deleted akvc.sdk
+    # package. Return non-zero (no-op); camera control on macOS now goes through
+    # the C++ akvc_camera binding via RuntimeHost, not the old Python facade.
+    return 1
 
 
 def _probe_stream_dependencies() -> tuple[bool, str]:
@@ -178,23 +181,23 @@ class ServiceFacade:
         self._runtime_mu = threading.RLock()
         self._is_windows = sys.platform == "win32"
         self._is_macos = sys.platform == "darwin"
-        self._mac_camera = (
-            _load_macos_facade_bindings()["VirtualCamera"](**_current_macos_container_app_kwargs()) if self._is_macos else None
-        )
+        # macOS camera control now goes through RuntimeHost -> akvc_camera
+        # (C++ binding). The old akvc.sdk-backed _mac_camera is gone; the macOS
+        # install UI methods return defaults until re-implemented on the C++ layer.
+        self._mac_camera = None
         self._settings_opener = settings_opener
         self._device_registered = False
         self._worker_command_cls = None
         self._stream_dependency_runtime_error = False
         self._stream_dependencies_ready, self._stream_dependency_message = _probe_stream_dependencies()
-        self._state.worker_status.stream_start_ready = self._stream_dependencies_ready and not self._is_macos
+        # Camera control on both Windows and macOS now goes through RuntimeHost
+        # -> akvc_camera (C++ binding), which handles helper/MF-registration
+        # (Win) and extension activation (macOS) inside start(). So stream
+        # readiness is just the numpy/cv2 dependency check.
+        self._state.worker_status.stream_start_ready = self._stream_dependencies_ready
         self._state.worker_status.stream_start_message = (
-            ""
-            if self._state.worker_status.stream_start_ready
-            else (
-                self._stream_dependency_message
-                if not self._stream_dependencies_ready
-                else "请先安装并启用 AK Virtual Camera，等待设备出现在系统摄像头列表后再开始推流。"
-            )
+            "" if self._state.worker_status.stream_start_ready
+            else self._stream_dependency_message
         )
 
     def bootstrap(self) -> None:

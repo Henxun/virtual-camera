@@ -195,9 +195,20 @@ def main() -> int:
     if rc != 0:
         return rc
 
+    # Nuitka may name the bundle after the entry script (main.py -> main.app)
+    # when --macos-app-name doesn't take effect for a given version; rename to
+    # the canonical bundle name so embed_extension() finds it.
     app = DIST_DIR / BUNDLE_NAME
     if not app.is_dir():
-        sys.exit(f"[package] expected bundle not found: {app}")
+        apps = sorted(DIST_DIR.glob("*.app")) if DIST_DIR.is_dir() else []
+        if len(apps) == 1:
+            if app.exists():
+                shutil.rmtree(app)
+            apps[0].rename(app)
+            print(f"[package] renamed {apps[0].name} -> {BUNDLE_NAME}")
+        else:
+            sys.exit(f"[package] expected {BUNDLE_NAME} not found in {DIST_DIR}; "
+                     f"found: {[a.name for a in apps]}")
     embed_extension(app)
     print(f"[package] done: {app}")
     print("[package] open it, or for VC-M-1 first run: "
