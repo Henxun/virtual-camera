@@ -155,7 +155,7 @@ def run_nuitka(binding_so: Path) -> int:
         nuitka_python, "-m", "nuitka",
         "--standalone",
         "--macos-create-app-bundle",
-        f"--macos-app-name={APP_NAME}",
+        f"--macos-app-name={BUNDLE_NAME.removesuffix('.app')}",
         f"--macos-app-version={APP_VERSION}",
         "--enable-plugin=pyside6",
         "--include-package=akvc_app",
@@ -163,7 +163,6 @@ def run_nuitka(binding_so: Path) -> int:
         "--include-package-data=akvc_app",
         "--nofollow-import-to=akvc_app.tests",
         f"--output-dir={DIST_DIR}",
-        f"-o={BUNDLE_NAME}",
         str(ENTRY),
     ]
     return _run(cmd, env=env)
