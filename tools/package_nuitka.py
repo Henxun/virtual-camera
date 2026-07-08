@@ -49,13 +49,20 @@ def _run(cmd: list[str], env: dict[str, str] | None = None) -> int:
 
 
 def _binding_so() -> Path:
-    """Locate the built akvc_camera pybind module (.so)."""
+    """Locate the built akvc_camera pybind module (.so / .cpython-*.so)."""
+    # Specific expected locations first (fast path).
     for cand in [
         BUILD_DIR / "bin" / "Release" / "akvc_camera.so",
         BUILD_DIR / "bin" / "akvc_camera.so",
         BUILD_DIR / "lib" / "akvc_camera.so",
     ]:
         if cand.is_file():
+            return cand
+    # Fall back to a recursive glob: pybind11 may tag the suffix with the Python
+    # ABI (e.g. akvc_camera.cpython-311-darwin.so) and/or place it under a
+    # per-target subdir depending on the generator.
+    if BUILD_DIR.is_dir():
+        for cand in BUILD_DIR.rglob("akvc_camera*.so"):
             return cand
     return Path()
 
@@ -77,7 +84,19 @@ def ensure_binding_built() -> Path:
         sys.exit("[package] cmake build akvc_camera_python failed")
     so = _binding_so()
     if not so.is_file():
-        sys.exit(f"[package] akvc_camera.so not found after build (looked in {BUILD_DIR})")
+        # Diagnostic: list any .so/.dylib files actually produced, so the user
+        # can see where the binding landed (or if it didn't).
+        produced = []
+        if BUILD_DIR.is_dir():
+            produced = [p for pat in ("*.so", "*.dylib") for p in BUILD_DIR.rglob(pat)]
+        hint = "\n  ".join(str(p.relative_to(ROOT)) for p in produced[:15]) or "(none)"
+        sys.exit(
+            f"[package] akvc_camera.so not found under {BUILD_DIR} after build.\n"
+            f"  .so/.dylib files present:\n  {hint}\n"
+            f"  If the binding has a different name/path, adjust _binding_so() "
+            f"in tools/package_nuitka.py (BUILD_DIR.rglob already searches "
+            f"'akvc_camera*.so')."
+        )
     print(f"[package] akvc_camera binding built: {so}")
     return so
 
@@ -116,8 +135,6 @@ def run_nuitka(binding_so: Path) -> int:
         "--include-module=akvc_camera",        # the C++ pybind binding (.so)
         "--include-package-data=akvc_app",
         "--nofollow-import-to=akvc_app.tests",
-        # Keep the build dir importable at runtime (RuntimeHost fallback search).
-        f"--include-data-dir={binding_dir}=akvc_camera_lib",
         f"--output-dir={DIST_DIR}",
         f"-o={BUNDLE_NAME}",
         str(ENTRY),
