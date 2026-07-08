@@ -168,6 +168,30 @@ def run_nuitka(binding_so: Path) -> int:
     return _run(cmd, env=env)
 
 
+def patch_info_plist(app: Path) -> None:
+    """Add NSCameraUsageDescription to the bundle's Info.plist.
+
+    The DirectSender uses AVCaptureDeviceDiscoverySession to find the camera
+    device; macOS requires an NSCameraUsageDescription string or the camera
+    list comes back empty (DirectSender.start fails with 'camera device not
+    found'). Nuitka's generated Info.plist does not include it."""
+    import plistlib
+    plist_path = app / "Contents" / "Info.plist"
+    if not plist_path.is_file():
+        print("[package] Info.plist not found - skip NSCameraUsageDescription patch")
+        return
+    with open(plist_path, "rb") as f:
+        data = plistlib.load(f)
+    data.setdefault("NSCameraUsageDescription",
+                    "AK Virtual Camera needs camera access to stream frames.")
+    # Also declare the system-extension install intent (informational).
+    data.setdefault("NSSystemExtensionUsageDescription",
+                    "AK Virtual Camera installs a camera extension.")
+    with open(plist_path, "wb") as f:
+        plistlib.dump(data, f)
+    print("[package] patched Info.plist: NSCameraUsageDescription")
+
+
 def embed_extension(app: Path) -> None:
     """Embed the .systemextension into the .app bundle."""
     ext = find_extension()
@@ -248,6 +272,7 @@ def main() -> int:
             sys.exit(f"[package] expected {BUNDLE_NAME} not found in {DIST_DIR}; "
                      f"found: {[a.name for a in apps]}")
     embed_extension(app)
+    patch_info_plist(app)
     sign_bundle(app)
     print(f"[package] done: {app}")
     print("[package] open it, or for VC-M-1 first run: "
