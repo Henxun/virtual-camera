@@ -111,12 +111,39 @@ def find_extension() -> Path | None:
     return None
 
 
+def _can_import(python: str, module: str) -> bool:
+    """Return True if `python -c 'import module'` succeeds."""
+    return subprocess.call([python, "-c", f"import {module}"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+
+
+def _select_nuitka_python() -> str:
+    """Pick a Python that has both nuitka and PySide6 importable.
+
+    Prefers the project .venv (where the user typically installs PySide6 +
+    nuitka), falling back to sys.executable. Nuitka's pyside6 plugin locates
+    PySide6 via the Python running Nuitka, so they must be in the same env."""
+    candidates = []
+    venv_python = ROOT / ".venv" / "bin" / "python"
+    if venv_python.exists():
+        candidates.append(str(venv_python))
+    candidates.append(sys.executable)
+    for py in candidates:
+        if _can_import(py, "nuitka") and _can_import(py, "PySide6"):
+            print(f"[package] using python for nuitka: {py}")
+            return py
+    sys.exit(
+        "[package] no python found with both nuitka AND PySide6 importable.\n"
+        "  Activate the project venv and install them:\n"
+        "    source .venv/bin/activate\n"
+        "    pip install nuitka PySide6\n"
+        "  then re-run: python tools/package_nuitka.py"
+    )
+
+
 def run_nuitka(binding_so: Path) -> int:
     """Run Nuitka to produce the .app bundle."""
-    try:
-        import nuitka  # noqa: F401
-    except ImportError:
-        sys.exit("[package] nuitka not installed - run: pip install nuitka")
+    nuitka_python = _select_nuitka_python()
 
     # Put the binding's dir on PYTHONPATH so Nuitka can import akvc_camera at
     # compile time (--include-module requires it to be importable).
@@ -125,7 +152,7 @@ def run_nuitka(binding_so: Path) -> int:
     env["PYTHONPATH"] = binding_dir + os.pathsep + env.get("PYTHONPATH", "")
 
     cmd = [
-        sys.executable, "-m", "nuitka",
+        nuitka_python, "-m", "nuitka",
         "--standalone",
         "--macos-create-app-bundle",
         f"--macos-app-name={APP_NAME}",
