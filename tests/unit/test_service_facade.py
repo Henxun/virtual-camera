@@ -2,65 +2,23 @@
 
 from __future__ import annotations
 
-import queue
-import threading
-
 from apps.desktop.akvc_app.services.facade import ServiceFacade
 from apps.desktop.akvc_app.services.source_info import (
     DEFAULT_PROVIDER_FPS,
     DEFAULT_PROVIDER_HEIGHT,
     DEFAULT_PROVIDER_WIDTH,
     ProviderInfo,
+    parse_source_id,
 )
-from akvc._core_native import parse_source_id
-from apps.desktop.akvc_app.workers.frame_worker import WorkerCommand, _build_provider, _start_command_watcher
-from apps.desktop.akvc_app.workers.source_provider import TestPatternProvider, UsbCameraProvider
+from apps.desktop.akvc_app.workers.source_provider import (
+    TestPatternProvider,
+    UsbCameraProvider,
+    create_provider_from_source_id,
+)
 
 
 def fake_provider_info(id: str, name: str) -> ProviderInfo:
     return ProviderInfo(id=id, name=name, formats=())
-
-
-class FakeHelper:
-    def __init__(self, *, start_result: bool = True, ping_result: bool = True, register_result: bool = True,
-                 last_error_message: str | None = None) -> None:
-        self.start_result = start_result
-        self.ping_result = ping_result
-        self.register_result = register_result
-        self.last_error_message = last_error_message
-        self.start_calls = 0
-        self.ping_calls = 0
-        self.register_calls: list[str] = []
-        self.stop_calls = 0
-        self.installed = False
-        self.start_installed_calls: list[str] = []
-
-    def start(self) -> bool:
-        self.start_calls += 1
-        return self.start_result
-
-    def ping(self) -> bool:
-        self.ping_calls += 1
-        return self.ping_result
-
-    def register_mf(self, name: str = "AK Virtual Camera") -> bool:
-        self.register_calls.append(name)
-        return self.register_result
-
-    def stop(self) -> None:
-        self.stop_calls += 1
-        return None
-
-    def scheduled_task_status(self, task_name: str = "AKVirtualCameraHelper") -> dict:
-        return {"task_name": task_name, "installed": self.installed, "pipe_reachable": self.ping_result}
-
-    def start_installed(self, task_name: str = "AKVirtualCameraHelper", timeout_s: float = 8.0) -> bool:
-        self.start_installed_calls.append(task_name)
-        return self.start_result
-
-    def ensure_running(self, *, task_name: str = "AKVirtualCameraHelper", prefer_installed: bool = True) -> bool:
-        self.start_installed_calls.append(task_name)
-        return self.start_result
 
 
 class FakeRuntimeHost:
@@ -83,11 +41,6 @@ class FakeRuntimeHost:
         self.snapshot_value["running"] = True
         self.start_calls.append(("start_source", source_id))
 
-    def start(self, provider, pipeline, sink_factory) -> None:
-        self.started = True
-        self.snapshot_value["running"] = True
-        self.start_calls.append(("start", "legacy"))
-
     def stop(self) -> None:
         self.started = False
         self.snapshot_value["running"] = False
@@ -97,88 +50,35 @@ class FakeRuntimeHost:
         return dict(self.snapshot_value)
 
 
-class FakeProvider:
-    def __init__(self) -> None:
-        self.stop_requested = threading.Event()
-
-    def request_stop(self) -> None:
-        self.stop_requested.set()
-
-
-def test_start_raises_when_helper_fails(monkeypatch) -> None:
-    facade = ServiceFacade()
-    facade._state.selected_source_id = "demo"
-    facade._helper = FakeHelper(
-        start_result=False,
-        last_error_message="helper launch failed",
-    )
-    monkeypatch.setattr(facade, "_is_windows", True)
-
-    try:
-        facade.start()
-    except RuntimeError as exc:
-        assert "helper launch failed" in str(exc)
-    else:
-        raise AssertionError("start should fail when helper does not start")
-
-
-def test_start_raises_when_mf_registration_fails(monkeypatch) -> None:
-    facade = ServiceFacade()
-    facade._state.selected_source_id = "demo"
-    facade._helper = FakeHelper(register_result=False)
-    monkeypatch.setattr(facade, "_is_windows", True)
-
-    try:
-        facade.start()
-    except RuntimeError as exc:
-        assert "register MF virtual camera" in str(exc)
-    else:
-        raise AssertionError("start should fail when MF registration fails")
-
-
-def test_command_watcher_sets_stop_and_notifies_provider() -> None:
-    cmd_q: queue.Queue[WorkerCommand] = queue.Queue()
-    stop_requested = threading.Event()
-    provider = FakeProvider()
-
-    watcher = _start_command_watcher(cmd_q, stop_requested, provider)
-    cmd_q.put(WorkerCommand("stop"))
-    watcher.join(timeout=1.0)
-
-    assert stop_requested.is_set()
-    assert provider.stop_requested.is_set()
-
-
 def test_parse_source_id_routes_usb_ids() -> None:
-    parsed = dict(parse_source_id("usb:2"))
-
+    parsed = parse_source_id("usb:2")
     assert parsed["kind"] == "usb"
     assert parsed["device_index"] == 2
     assert parsed["pattern_id"] is None
 
 
 def test_parse_source_id_routes_pattern_ids() -> None:
-    parsed = dict(parse_source_id("test:moving_box"))
-
+    parsed = parse_source_id("test:moving_box")
     assert parsed["kind"] == "test"
     assert parsed["device_index"] is None
     assert parsed["pattern_id"] == "moving_box"
 
 
 def test_build_provider_falls_back_to_colorbar_for_unknown_pattern() -> None:
-    provider = _build_provider("test:not-real")
-
+    provider = create_provider_from_source_id("test:not-real")
     assert isinstance(provider, TestPatternProvider)
     assert provider.pattern.value == "colorbar"
 
 
-def test_usb_provider_read_short_circuits_after_stop_request() -> None:
+def test_usb_provider_read_raises_when_not_opened() -> None:
     provider = UsbCameraProvider(device_index=0)
     provider.request_stop()
-
-    frame = provider.read()
-
-    assert frame.meta == {"reason": "not opened"}
+    try:
+        provider.read()
+    except RuntimeError as exc:
+        assert "not opened" in str(exc)
+    else:
+        raise AssertionError("read() should raise when the USB provider was not opened")
 
 
 def test_discover_sources_keeps_usb_before_patterns(monkeypatch) -> None:
@@ -246,26 +146,37 @@ def test_discover_sources_recovers_when_usb_probe_fails(monkeypatch) -> None:
     assert all(source.id.startswith("test:") for source in sources)
 
 
-def test_start_re_registers_after_helper_restart(monkeypatch) -> None:
-    ping_states = iter([False, True, False, True])
-    helper = FakeHelper()
-    helper.ping = lambda: next(ping_states)
-
+def test_start_delegates_to_runtime_host(monkeypatch) -> None:
     facade = ServiceFacade()
     facade._state.selected_source_id = "test:colorbar"
-    facade._helper = helper
-    facade._runtime = FakeRuntimeHost()
-    facade._is_windows = True
+    runtime = FakeRuntimeHost()
+    facade._runtime = runtime
+    monkeypatch.setattr(facade, "_is_windows", True)
+
+    facade.start()
+
+    # The control layer excludes installation: start() must NOT call any helper
+    # or MF registration; it only delegates to the runtime host.
+    assert runtime.start_calls == [("start_source", "test:colorbar")]
+    assert not hasattr(facade, "_helper") or facade._helper is None
+
+
+def test_start_stop_start_restarts_runtime_host(monkeypatch) -> None:
+    facade = ServiceFacade()
+    facade._state.selected_source_id = "test:colorbar"
+    runtime = FakeRuntimeHost()
+    facade._runtime = runtime
+    monkeypatch.setattr(facade, "_is_windows", True)
 
     facade.start()
     facade.stop(timeout=0.1)
     facade.start()
 
-    assert facade._runtime.start_calls == [
+    assert runtime.start_calls == [
         ("start_source", "test:colorbar"),
         ("start_source", "test:colorbar"),
     ]
-    assert helper.register_calls == ["AK Virtual Camera", "AK Virtual Camera"]
+    assert runtime.stop_calls == 1
 
 
 def test_stop_stops_runtime_host() -> None:
@@ -279,5 +190,3 @@ def test_stop_stops_runtime_host() -> None:
 
     assert runtime.stop_calls == 1
     assert facade._state.worker_status.running is False
-
-

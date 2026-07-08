@@ -18,7 +18,30 @@ import sys
 from ctypes import POINTER, byref, c_int, c_uint8, c_uint32, c_void_p, c_wchar_p
 from pathlib import Path
 
-from akvc._core_native import NativeFrameBusProtocol
+# Frame-bus protocol constants (mirrored from virtualcam/shared/akvc_protocol.h;
+# the former akvc._core_native Python wrapper was removed in M7).
+FRAMEBUS_PATH_ENV = "AKVC_FRAMEBUS_PATH"
+FRAMEBUS_DIR_ENV = "AKVC_FRAMEBUS_DIR"
+FRAMEBUS_DEFAULT_SUBDIR = "AKVirtualCamera"
+FRAMEBUS_DEFAULT_FILE = "akvc-frames-v1.bin"
+# sizeof(akvc_ring_control_t)=128 + AKVC_DEFAULT_SLOT_SIZE(0x300000)*AKVC_RING_SLOTS(4)
+FRAMEBUS_REGION_SIZE = 128 + 0x00300000 * 4
+
+
+def _framebus_default_path() -> Path:
+    """Mirror framebus_file_path(): AKVC_FRAMEBUS_PATH env, else <AKVC_FRAMEBUS_DIR
+    or CSIDL_COMMON_DOCUMENTS/AKVirtualCamera>/akvc-frames-v1.bin."""
+    explicit = os.environ.get(FRAMEBUS_PATH_ENV)
+    if explicit:
+        return Path(explicit)
+    base = os.environ.get(FRAMEBUS_DIR_ENV)
+    if not base:
+        base = os.path.join(os.environ.get("PUBLIC", r"C:\Users\Public"),
+                            "Documents", FRAMEBUS_DEFAULT_SUBDIR)
+    return Path(base) / FRAMEBUS_DEFAULT_FILE
+
+
+FRAMEBUS_DEFAULT_PATH = _framebus_default_path()
 
 
 ole32 = ctypes.OleDLL("ole32")
@@ -48,11 +71,6 @@ def _failed(hr: int) -> bool:
 
 
 CLSID = "{8E14549A-DB61-4309-AFA1-3578E927E933}"
-FRAMEBUS_PATH_ENV = str(NativeFrameBusProtocol["FRAMEBUS_PATH_ENV"])
-FRAMEBUS_DIR_ENV = str(NativeFrameBusProtocol["FRAMEBUS_DIR_ENV"])
-FRAMEBUS_DEFAULT_SUBDIR = str(NativeFrameBusProtocol["FRAMEBUS_DEFAULT_SUBDIR"])
-FRAMEBUS_DEFAULT_FILE = str(NativeFrameBusProtocol["FRAMEBUS_DEFAULT_FILE"])
-FRAMEBUS_DEFAULT_PATH = Path(str(NativeFrameBusProtocol["FRAMEBUS_DEFAULT_PATH"]))
 CLSID_SystemDeviceEnum = guid("{62BE5D10-60EB-11D0-BD3B-00A0C911CE86}")
 CLSID_VideoInputDeviceCategory = guid("{860BB310-5D01-11D0-BD3B-00A0C911CE86}")
 IID_ICreateDevEnum = guid("{29840822-5B84-11D0-BD3B-00A0C911CE86}")
@@ -249,12 +267,12 @@ def check_framebus() -> bool:
 
     size = path.stat().st_size
     print(f"  file size:    {size}")
-    if size < int(NativeFrameBusProtocol["REGION_SIZE"]):
+    if size < FRAMEBUS_REGION_SIZE:
         print("  [FAIL] backing file is smaller than the frame bus region")
         return False
 
     with path.open("rb") as f:
-        region = f.read(int(NativeFrameBusProtocol["REGION_SIZE"]))
+        region = f.read(FRAMEBUS_REGION_SIZE)
 
     magic = struct.unpack_from("<I", region, 0)[0]
     schema = struct.unpack_from("<I", region, 4)[0]

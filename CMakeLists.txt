@@ -51,10 +51,17 @@ if(DEFINED AKVC_CAMERA_NAME)
     add_compile_definitions(AKVC_CAMERA_NAME=${AKVC_CAMERA_NAME})
 endif()
 
-# ---- Subprojects (Windows only in Phase 2) ----
+# ---- Testing ----
+enable_testing()
+
+# ---- Subprojects ----
+# akvc_camera_core (control layer: types + pipeline primitives) is
+# platform-agnostic and builds on every platform.
+add_subdirectory(camera-core)
+
+# Windows-only native driver (the legacy pybind11 core was removed in M7).
 if(WIN32)
     add_subdirectory(virtualcam/windows/framebus)
-    add_subdirectory(camera-core/native)
     add_subdirectory(virtualcam/windows/dshow)
     add_subdirectory(virtualcam/windows/helper)
     add_subdirectory(virtualcam/windows/mf)

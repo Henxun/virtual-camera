@@ -41,3 +41,45 @@
 - Root cause: the custom ctypes COM call sequence for `IMoniker::BindToStorage(..., IID_IPropertyBag, ...)` is still incorrect, so the script cannot yet prove `ICreateDevEnum` enumeration even though registry-based registration is present.
 - Fix: correct the COM vtable binding/signature in the diagnostic script, or replace the low-level ctypes path with a more reliable COM helper for `IEnumMoniker` + `IPropertyBag` reads.
 - Verification: after fixing the enumeration path, `tools/diag/dshow_enum.py` should list `AK Virtual Camera` under `=== DirectShow Enumeration ===`; until then, do not interpret the current VC-3 FAIL as a proven product bug.
+
+## 2026-07-08 — `akvc-dshow.dll` relink fails with LNK1104 "无法打开文件" (DLL locked by consumer)
+
+- Symptom: `cmake --build build --config Release` fails on the `akvc_dshow` target with `LINK : fatal error LNK1104: 无法打开文件"...\build\bin\Release\akvc-dshow.dll"`, while other targets (`akvc_camera_core`, `akvc_helper.exe`, `akvc-mf.dll`) link fine.
+- Root cause: a consumer process has the DShow filter DLL loaded. DirectShow loads the filter into any process that enumerates video capture devices — Chrome (a tab on a camera page), OBS, Zoom, GraphStudioNext, or even the agent/editor process (`Codex.exe`). The linker cannot overwrite the locked output.
+- Verify which process holds it:
+  ```powershell
+  Get-Process | Where-Object { $_.Modules | Where-Object { $_.FileName -like '*akvc-dshow.dll' } } | Select Id,ProcessName
+  ```
+- Fix (non-disruptive, preferred during refactor): build only the targets you changed, avoiding the locked-DLL relink — `cmake --build build --config Release --target akvc_camera_core akvc_camera_tests`. The existing `akvc-dshow.dll` stays current as long as no DShow source changed; a relink would produce a byte-identical binary.
+- Fix (full build, e.g. at acceptance): close the consumer holding the DLL (close Chrome's camera tab / quit OBS), then rebuild. Do NOT kill Chrome processes blindly — that crashes the user's browser session.
+- Verification: targeted build exits 0; `ctest` green. Full build green only after the consumer releases the DLL.
+
+## 2026-07-08 — `bgr24_to_nv12` of pure green yields Y=144 (not 145)
+
+- Symptom: `bgr24_to_nv24` of pure green (B=0, G=255, R=0) produces Y=144; a naive hand-calculation gives 145.
+- Root cause: `yv = ((66*0 + 129*255 + 25*0 + 128) >> 8) + 16 = (33023 >> 8) + 16`. `33023 = 0x80FF`, so `>>8 = 0x80 = 128` (NOT 129, because `256*129 = 33024 > 33023`). Thus `Y = 128 + 16 = 144`. This is bit-identical to the legacy `rgb24_to_nv12_frame`; the off-by-one is a hand-calculation trap, not a code bug.
+- Fix: assert Y=144 for green in `camera-core/tests/test_pipeline_ops.cpp`. BT.601 limited-range reference values used in the test: black=16/UV=128, white=235/UV=128, green=144/(54,34), blue=41/(240,110), red=82/(90,240).
+- Verification: `ctest -C Release` → `akvc_camera_pipeline_tests` Passed.
+
+
+## 2026-07-08 - Chrome/Edge (Media Foundation) shows no picture while OBS (DShow) works
+
+- Symptom: on Windows 11, OBS/Zoom (DirectShow) show the AK Virtual Camera feed, but Chrome/Edge/Teams (Media Foundation) show no picture (or no device).
+- Root cause (two, both required):
+  1. The MF virtual camera was never registered via `MFCreateVirtualCamera`. Win11 Chrome/Edge use Media Foundation, not DirectShow; without an MF virtual camera registered, MF consumers have no device to open. The DShow filter (regsvr32) does not cover them.
+  2. `akvc-mf.dll` set `MF_DEVICESTREAM_STREAM_CATEGORY = KSCATEGORY_VIDEO_CAMERA` in `MediaSourceActivate::ctor`. `KSCATEGORY_VIDEO_CAMERA` is only for `MFCreateVirtualCamera` device registration/aggregation; the stream category must be `PINNAME_VIDEO_CAPTURE` (matching `GetStreamAttributes`). With the wrong category the MF frame server cannot start the stream.
+- Fix:
+  - Control layer `start()` calls `MFCreateVirtualCamera` (via the elevated helper's `register_mf` pipe command, `CMD_REGISTER_MF=0x4`) on Windows 11+ (build >= 22000, detected via `RtlGetVersion`). See `camera-core/src/platform/windows/windows_session.cpp` + `helper_client_runtime.cpp`. Registration is idempotent.
+  - `virtualcam/windows/mf/src/mf_source.cpp` `MediaSourceActivate::ctor` sets `MF_DEVICESTREAM_STREAM_CATEGORY` to `PINNAME_VIDEO_CAPTURE` (matches `GetStreamAttributes`).
+- Verification: `tools/diag/mf_enum.py` (WinRT `DeviceInformation::FindAllAsync(VideoCapture)`) lists `AK Virtual Camera` - this is the enumeration Chrome/Edge use (NOT `Get-PnpDevice`). Chrome getUserMedia sample then shows the feed.
+- Note: `MFCreateVirtualCamera` requires the helper to run elevated. If `start()` returns `HelperUnavailable` with "MF virtual camera registration failed", ensure the helper was launched elevated (scheduled task `AKVirtualCameraHelper` with `/rl highest`, or UAC-approved launch).
+- RULE-OVERRIDE: the control layer originally excluded installation, but Win11 MF registration (`MFCreateVirtualCamera`) is now part of `start()` because MF consumers cannot see the device without it. DShow `regsvr32` remains a separate one-time install step.
+
+## 2026-07-08 - Virtual camera picture flickers (alternating frames / black)
+
+- Symptom: OBS/Chrome show the AK Virtual Camera feed but it flickers (alternating frames, or real<->black).
+- Root cause: MULTIPLE producer processes writing to the same frame-bus shared memory (`Global\akvc-frames-v1` / `AKVirtualCamera\akvc-frames-v1.bin`). Each producer takes over `writer_pid` and publishes to the 4-slot ring; with 2+ producers their frames interleave and the consumer reads a mix -> flicker. Common way to get multiple producers: launching the desktop app twice, or leaving `cpp_camera_demo.py` running while the app is also streaming, or a `kill <bash_pid>` that did not terminate the actual `python.exe` (Git Bash `kill` uses POSIX signals that often do not stop native Windows processes).
+- Diagnose: sample the shm control block - `writer_pid` alternates between two (or more) PIDs across samples. `Get-CimInstance Win32_Process -Filter "Name='python.exe'"` shows multiple `akvc_app`/`cpp_camera_demo` instances.
+- Fix: keep exactly ONE producer. Kill all others with `Stop-Process -Id <pid> -Force` (PowerShell; Git Bash `kill` is unreliable on native Windows processes). Verify `writer_pid` is stable (single PID) across samples.
+- Note: a single `python -m akvc_app` launch may show TWO `python.exe` PIDs (parent = `.venv\Scripts\python.exe` launcher, child = the real uv-managed interpreter it spawns). That is ONE logical app instance, not two producers.
+- Rule: only one app/demo instance may stream at a time.

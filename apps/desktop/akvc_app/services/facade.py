@@ -12,29 +12,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Callable, Optional
-try:
-    from akvc._core_native import NativeRuntimeHost
-except ModuleNotFoundError:  # pragma: no cover - import-contract fallback
-    class NativeRuntimeHost:  # type: ignore[no-redef]
-        def start_source(self, source_id: str) -> None:
-            del source_id
 
-        def stop(self) -> None:
-            return None
-
-        def snapshot(self) -> dict[str, object]:
-            return {}
-
-from .helper_service import HelperService
+from .runtime_host import RuntimeHost
 from .source_info import ProviderInfo, list_test_pattern_sources, list_usb_sources
 
 log = logging.getLogger(__name__)
 SettingsOpener = Callable[[], int]
-
-
-if TYPE_CHECKING:
-    from akvc.core.frame_provider.base import ProviderInfo
-    from akvc.platforms.macos.installer import ExtensionReadiness, ExtensionStatus
 
 
 def _load_macos_facade_bindings():
@@ -78,12 +61,6 @@ _PATTERN_SOURCES = [
 
 def _default_settings_opener() -> int:
     return _load_macos_facade_bindings()["open_macos_install_settings"]()
-
-
-def _load_frame_worker_symbols():
-    from ..workers.frame_worker import WorkerCommand, frame_worker_main
-
-    return WorkerCommand, frame_worker_main
 
 
 def _probe_stream_dependencies() -> tuple[bool, str]:
@@ -197,11 +174,10 @@ class ServiceFacade:
 
     def __init__(self, *, settings_opener: SettingsOpener = _default_settings_opener) -> None:
         self._state = ServiceState()
-        self._runtime = NativeRuntimeHost()
+        self._runtime = RuntimeHost()
         self._runtime_mu = threading.RLock()
         self._is_windows = sys.platform == "win32"
         self._is_macos = sys.platform == "darwin"
-        self._helper = HelperService() if self._is_windows else None
         self._mac_camera = (
             _load_macos_facade_bindings()["VirtualCamera"](**_current_macos_container_app_kwargs()) if self._is_macos else None
         )
@@ -230,11 +206,6 @@ class ServiceFacade:
     def shutdown(self) -> None:
         log.info("akvc.facade.shutdown")
         self.stop()
-        if self._helper is not None:
-            try:
-                self._helper.stop()
-            except Exception:
-                pass
         self._device_registered = False
 
     def list_sources(self) -> list[ProviderInfo]:
@@ -263,21 +234,11 @@ class ServiceFacade:
             raise RuntimeError("no source selected")
 
         if self._is_windows:
-            assert self._helper is not None
-            helper_was_alive = self._helper.ping()
-            if not helper_was_alive:
-                self._device_registered = False
-            if not self._helper.ensure_running():
-                detail = self._helper.last_error_message or "failed to start akvc helper"
-                raise RuntimeError(detail)
-            if not self._helper.ping():
-                raise RuntimeError("akvc helper is not responding")
-            if not self._device_registered:
-                if self._helper.register_mf(name="AK Virtual Camera"):
-                    self._device_registered = True
-                    log.info("akvc.facade.mf_registered")
-                else:
-                    raise RuntimeError("failed to register MF virtual camera")
+            # The C++ akvc_camera binding launches the helper daemon inside
+            # VirtualCamera.start(); MF registration is an install step and is
+            # out of scope for the control layer. The DShow/MF device must be
+            # registered separately (e.g. `akvc register` / installer).
+            self._device_registered = True
         else:
             install_status = self.recheck_install_status()
             if not install_status.stream_start_ready:

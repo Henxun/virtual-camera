@@ -49,3 +49,9 @@ logs/
 
 # Stray Windows reserved-name file (created accidentally by shell redirects)
 nul
+
+# Agent worktrees (local, not for commit)
+.claude/worktrees/
+
+# C# diag build artifacts
+tools/diag/obj/

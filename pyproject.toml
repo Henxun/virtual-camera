@@ -1,63 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
 [build-system]
-requires = ["setuptools>=68", "wheel", "pybind11>=2.12", "numpy>=1.26,<3.0"]
+requires = ["setuptools>=68", "wheel", "pybind11>=2.12"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "amaran-virtual-camera"
+name = "amaran-virtual-camera-workspace"
 version = "0.2.0"
-description = "AK Virtual Camera SDK + cross-platform runtime assets"
-readme = "README.md"
+description = "AK Virtual Camera - C++ control layer + native driver (workspace root)"
 requires-python = ">=3.11,<3.15"
 license = { text = "Apache-2.0" }
 authors = [{ name = "AK Virtual Camera Authors" }]
-dependencies = [
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
     "numpy>=1.26,<3.0",
     "opencv-python-headless>=4.9,<5.0",
     "pydantic>=2.5,<3.0",
-]
-
-[project.optional-dependencies]
-cli = []
-desktop = [
     "PySide6>=6.6,<7",
+    "pytest>=8.1",
+    "pybind11>=2.12",
 ]
-all = [
-    "PySide6>=6.6,<7",
-]
-
-[project.scripts]
-akvc = "akvc_cli.__main__:main"
-
-[tool.setuptools]
-include-package-data = true
-
-[tool.setuptools.package-dir]
-"" = "."
-
-[tool.setuptools.packages.find]
-where = [".", "apps/cli"]
-include = ["akvc*", "akvc_cli*"]
-
-[tool.setuptools.package-data]
-"akvc.core" = ["py.typed"]
-"akvc" = [
-    "_core_native*.pyd",
-    "_runtime/windows/akvc_helper.exe",
-    "_runtime/windows/akvc-mf.dll",
-    "_runtime/windows/akvc-dshow.dll",
-    "_runtime/macos/README.md",
-    "_runtime/macos/akvc-macos-status",
-    "_runtime/macos/akvc-macos-install",
-    "_runtime/macos/akvc-macos-uninstall",
-    "_runtime/macos/akvc-macos-list-devices",
-    "_runtime/macos/akvc-macos-sync-ipc",
-    "_runtime/macos/libakvc-macos-direct-sender.dylib",
-    "_runtime/macos/VirtualCamera.pkg",
-]
-
-[tool.setuptools.exclude-package-data]
-"*" = ["__pycache__/*", "*.pyc", "*.pyo"]
 
 [tool.uv]
 package = false

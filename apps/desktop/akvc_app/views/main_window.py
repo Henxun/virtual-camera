@@ -168,6 +168,63 @@ class MainWindow(QMainWindow):
         self._btn_stop.setEnabled(not self._busy and self._running)
         self._source_combo.setEnabled(not self._busy and not self._running)
 
+    def _compose_status_bar_message(self, m: dict) -> str:
+        # Minimal status-bar composition (the rich formatter was never wired up;
+        # this keeps the bar informative without crashing on metrics updates).
+        fps = m.get("fps", 0)
+        published = m.get("published", 0)
+        consumers = m.get("consumers", 0)
+        running = m.get("running", False)
+        state = m.get("install_state", "") or ""
+        return f"{'Streaming' if running else 'Idle'} | FPS {fps:.1f} | Published {published} | Consumers {consumers}" + (f" | {state}" if state else "")
+
+    def _compose_install_label(self, *, state: str, phase: str, devices: list,
+                               supported_formats: list, supported_frame_rates: list,
+                               ipc_probe_present: bool, ipc_ready, ipc_environment_blocked: bool,
+                               ipc_direct_open_errno) -> str:
+        lines = [f"Install state: {state}" + (f" ({phase})" if phase else "")]
+        if devices:
+            lines.append("Devices: " + ", ".join(str(d) for d in devices))
+        if supported_formats:
+            lines.append("Formats: " + ", ".join(str(f) for f in supported_formats))
+        if supported_frame_rates:
+            lines.append("Frame rates: " + ", ".join(str(r) for r in supported_frame_rates))
+        if ipc_probe_present or ipc_ready is not None:
+            ipc = "ready" if ipc_ready else ("blocked" if ipc_environment_blocked else "not ready")
+            lines.append(f"IPC: {ipc}" + (f" (errno {ipc_direct_open_errno})" if ipc_direct_open_errno is not None else ""))
+        return "\n".join(lines)
+
+    def _compose_install_hint(self, *, install_message: str, stream_start_ready: bool,
+                              stream_start_message: str, runtime_topology_kind: str,
+                              runtime_host_role: str, runtime_host_in_frame_hot_path: bool,
+                              runtime_dedicated_host_daemon_required: bool,
+                              runtime_container_app_configured: bool, runtime_data_plane: str,
+                              runtime_control_plane: str, ipc_probe_present: bool, ipc_ready,
+                              ipc_environment_blocked: bool, ipc_transport: str,
+                              ipc_direct_open_errno, ipc_last_error: str, ipc_probe_path: str,
+                              manual_app_validation_present: bool, manual_app_validation_ready,
+                              manual_app_validation_failed_criteria: list,
+                              manual_app_validation_unknown_criteria: list,
+                              manual_app_validation_blockers: list,
+                              manual_app_validation_failed_labels: list,
+                              manual_app_validation_unknown_labels: list,
+                              manual_app_validation_blocker_labels: list) -> str:
+        if not stream_start_ready:
+            return stream_start_message or install_message or "Stream not ready."
+        if install_message:
+            return install_message
+        hint = "Ready to stream."
+        if runtime_topology_kind:
+            hint += f" Topology: {runtime_topology_kind}."
+        if runtime_data_plane:
+            hint += f" Data plane: {runtime_data_plane}."
+        return hint
+
+    def _apply_start_enabled_state(self, *, running: bool) -> None:
+        # Gate the Start button on busy/running/stream-readiness (pre-existing
+        # missing method; mirrors _sync_controls plus the install stream gate).
+        self._btn_start.setEnabled(not self._busy and not running and self._stream_start_ready)
+
     @Slot(object)
     def _on_preview(self, pix: QPixmap) -> None:
         self._preview_label.setPixmap(pix)

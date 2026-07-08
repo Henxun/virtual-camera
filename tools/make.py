@@ -807,20 +807,12 @@ def cmd_build(args: argparse.Namespace) -> int:
     if rc != 0:
         return rc
     if args.python:
-        rc = _install_windows_runtime(PACKAGE_RUNTIME, args)
-        if rc != 0:
-            return rc
-        _sync_windows_runtime_into_source_tree(PACKAGE_RUNTIME)
-        rc = _run([sys.executable, "-m", "pip", "install", "-e",
-                   str(ROOT / "camera-core")])
-        if rc != 0:
-            return rc
+        # The C++ akvc_camera binding (akvc_camera.pyd) lands in build/bin/Release;
+        # the desktop RuntimeHost searches that dir at import time. Only the
+        # desktop app is pip-installed now (the legacy akvc/ SDK + apps/cli +
+        # camera-core pybind module were removed in M7).
         rc = _run([sys.executable, "-m", "pip", "install", "-e",
                    str(ROOT / "apps" / "desktop")])
-        if rc != 0:
-            return rc
-        rc = _run([sys.executable, "-m", "pip", "install", "-e",
-                   str(ROOT / "apps" / "cli")])
     return rc
 
 
@@ -835,12 +827,86 @@ def cmd_register(_: argparse.Namespace) -> int:
 
 def cmd_unregister(_: argparse.Namespace) -> int:
     _check_windows()
-    cmd = [sys.executable, "-m", "akvc_cli", "unregister"]
-    if DSHOW_DLL.exists():
-        cmd.extend(["--dll", str(DSHOW_DLL)])
-    else:
-        print(f"[make] DLL not found at {DSHOW_DLL}, relying on CLI lookup")
-    return _run(cmd)
+    if not DSHOW_DLL.exists():
+        print(f"[make] DLL not found: {DSHOW_DLL}", file=sys.stderr)
+        print("[make] run `python tools/make.py build` first", file=sys.stderr)
+        return 1
+    return _run(["regsvr32", "/u", "/s", str(DSHOW_DLL)])
+
+
+# ---- Media Foundation virtual camera register/unregister (via helper pipe) ----
+HELPER_PIPE = r"\\.\pipe\akvc-helper-ctrl"
+_CMD_REGISTER_MF = 0x00000004
+_CMD_UNREGISTER_MF = 0x00000005
+_RSP_OK = 0x00000000
+
+
+def _helper_pipe_transact(cmd: int, payload: bytes = b"") -> int:
+    """Send a uint32 command (+ optional payload) to the running akvc helper's
+    control pipe and return the uint32 response. Returns -1 on pipe error.
+    The helper must be running elevated for MFCreateVirtualCamera / Remove()."""
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.windll.kernel32
+    k32.WaitNamedPipeW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD]
+    k32.WaitNamedPipeW.restype = wintypes.BOOL
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p]
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.WriteFile.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+                              ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+    k32.ReadFile.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+                             ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+    if not k32.WaitNamedPipeW(HELPER_PIPE, 250):
+        print("[make] helper pipe not reachable - is akvc_helper.exe running? "
+              "(start the desktop app or run a producer once to launch it)", file=sys.stderr)
+        return -1
+    h = k32.CreateFileW(HELPER_PIPE, 0xC0000000, 0, None, 3, 0, None)  # GENERIC_RW, OPEN_EXISTING
+    if h is None or h == -1 or h == 0xFFFFFFFFFFFFFFFF:
+        print(f"[make] CreateFileW(helper pipe) failed err={k32.GetLastError()}", file=sys.stderr)
+        return -1
+    try:
+        import struct
+        req = struct.pack("<I", cmd) + payload
+        written = wintypes.DWORD(0)
+        if not k32.WriteFile(h, req, len(req), ctypes.byref(written), None) or written.value != len(req):
+            print(f"[make] WriteFile(helper pipe) failed err={k32.GetLastError()}", file=sys.stderr)
+            return -1
+        resp = (ctypes.c_ubyte * 4)()
+        read_n = wintypes.DWORD(0)
+        if not k32.ReadFile(h, resp, 4, ctypes.byref(read_n), None) or read_n.value != 4:
+            print(f"[make] ReadFile(helper pipe) failed err={k32.GetLastError()}", file=sys.stderr)
+            return -1
+        return struct.unpack("<I", bytes(resp))[0]
+    finally:
+        k32.CloseHandle(h)
+
+
+def cmd_register_mf(args: argparse.Namespace) -> int:
+    _check_windows()
+    import struct
+    name = args.name
+    wide = name.encode("utf-16-le")
+    payload = struct.pack("<I", len(name)) + wide  # uint32 wchar_count + wchar_t name
+    rsp = _helper_pipe_transact(_CMD_REGISTER_MF, payload)
+    if rsp == _RSP_OK:
+        print(f"[make] MF virtual camera registered: {name}")
+        return 0
+    print(f"[make] MF registration failed (response={rsp}) - the helper must run elevated "
+          "(MFCreateVirtualCamera needs admin).", file=sys.stderr)
+    return 1
+
+
+def cmd_unregister_mf(_: argparse.Namespace) -> int:
+    _check_windows()
+    rsp = _helper_pipe_transact(_CMD_UNREGISTER_MF)
+    if rsp == _RSP_OK:
+        print("[make] MF virtual camera unregistered")
+        return 0
+    print(f"[make] MF unregister failed (response={rsp})", file=sys.stderr)
+    return 1
 
 
 def cmd_run(_: argparse.Namespace) -> int:
@@ -1884,6 +1950,10 @@ def main(argv: list[str] | None = None) -> int:
     pb.set_defaults(func="build")
     sub.add_parser("register").set_defaults(func="register")
     sub.add_parser("unregister").set_defaults(func="unregister")
+    rmf = sub.add_parser("register-mf")
+    rmf.add_argument("--name", default="AK Virtual Camera", help="MF camera friendly name")
+    rmf.set_defaults(func="register_mf")
+    sub.add_parser("unregister-mf").set_defaults(func="unregister_mf")
     pp = sub.add_parser("package")
     pp.add_argument("--skip-build", action="store_true",
                     help="skip xcodebuild and package current build outputs")
@@ -2186,6 +2256,8 @@ def main(argv: list[str] | None = None) -> int:
         "build":      cmd_build_macos     if is_mac else cmd_build,
         "register":   cmd_register_macos  if is_mac else cmd_register,
         "unregister": cmd_unregister_macos if is_mac else cmd_unregister,
+        "register_mf":   cmd_register_mf,
+        "unregister_mf": cmd_unregister_mf,
         "package":    cmd_package_macos   if is_mac else cmd_build,
         "sign":       cmd_sign_macos      if is_mac else cmd_register,
         "notarize":   cmd_notarize_macos  if is_mac else cmd_register,

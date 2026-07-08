@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""App-side provider contracts and native source metadata helpers."""
+"""App-side provider contracts and source metadata (pure Python).
+
+Replaces the former akvc._core_native-backed source_info. Test-pattern ids and
+source-id parsing are implemented here; USB enumeration is best-effort via cv2.
+"""
 
 from __future__ import annotations
 
@@ -7,54 +11,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-try:
-    from akvc._core_native import (
-        describe_source_id as _describe_source_id,
-        list_pattern_ids as _list_pattern_ids,
-        list_test_pattern_sources as _list_test_pattern_sources,
-        list_usb_sources as _list_usb_sources,
-        parse_source_id,
-    )
-except ModuleNotFoundError:  # pragma: no cover - import-contract fallback
-    def _list_pattern_ids() -> list[str]:
-        return ["colorbar", "gradient", "checkerboard", "noise", "solid", "moving_box"]
-
-    def _describe_source_id(source_id: str, width: int = 1280, height: int = 720, fps: int = 30):
-        return type(
-            "NativeSourceInfo",
-            (),
-            {
-                "id": source_id,
-                "name": source_id.split(":", 1)[-1].replace("_", " ").title(),
-                "formats": [
-                    type(
-                        "NativeFormatSpec",
-                        (),
-                        {
-                            "fourcc": 0,
-                            "width": width,
-                            "height": height,
-                            "fps_num": fps,
-                            "fps_den": 1,
-                        },
-                    )()
-                ],
-            },
-        )()
-
-    def _list_test_pattern_sources(width: int, height: int, fps: int):
-        return [_describe_source_id(f"test:{pattern_id}", width, height, fps) for pattern_id in _list_pattern_ids()]
-
-    def _list_usb_sources(max_probe: int, width: int, height: int, fps: int):
-        del max_probe, width, height, fps
-        return []
-
-    def parse_source_id(source_id: str):
-        return source_id
-
 DEFAULT_PROVIDER_WIDTH = 1280
 DEFAULT_PROVIDER_HEIGHT = 720
 DEFAULT_PROVIDER_FPS = 30
+
+_PATTERN_IDS: list[str] = ["colorbar", "gradient", "checkerboard", "noise", "solid", "moving_box"]
 
 
 @dataclass(frozen=True)
@@ -89,32 +50,22 @@ class Pattern(Enum):
         return Pattern.COLORBAR
 
 
-def format_spec_from_native(native: Any) -> FormatSpec:
-    return FormatSpec(
-        fourcc=int(native.fourcc),
-        width=int(native.width),
-        height=int(native.height),
-        fps_num=int(native.fps_num),
-        fps_den=int(native.fps_den),
-    )
-
-
-def provider_info_from_native(native: Any) -> ProviderInfo:
-    return ProviderInfo(
-        id=str(native.id),
-        name=str(native.name),
-        formats=tuple(format_spec_from_native(item) for item in native.formats),
-    )
-
-
-PATTERN_NAMES: dict[Pattern, str] = {
-    Pattern(pattern_id): provider_info_from_native(_describe_source_id(f"test:{pattern_id}")).name
-    for pattern_id in _list_pattern_ids()
-}
-
-
 def list_pattern_ids() -> list[str]:
-    return list(_list_pattern_ids())
+    return list(_PATTERN_IDS)
+
+
+def parse_source_id(source_id: str) -> dict[str, Any]:
+    """Parse 'test:<pattern>' or 'usb:<index>' into a dict."""
+    kind, _, rest = (source_id or "").partition(":")
+    kind = kind.strip().lower()
+    if kind == "usb":
+        try:
+            idx = int(rest.strip() or "0")
+        except ValueError:
+            idx = 0
+        return {"kind": "usb", "device_index": idx, "pattern_id": None}
+    pattern_id = rest.strip() or "colorbar"
+    return {"kind": "test", "pattern_id": pattern_id, "device_index": None}
 
 
 def describe_source_id(
@@ -124,7 +75,16 @@ def describe_source_id(
     height: int = DEFAULT_PROVIDER_HEIGHT,
     fps: int = DEFAULT_PROVIDER_FPS,
 ) -> ProviderInfo:
-    return provider_info_from_native(_describe_source_id(source_id, width, height, fps))
+    parsed = parse_source_id(source_id)
+    if parsed["kind"] == "usb":
+        name = f"USB Camera {parsed['device_index']}"
+    else:
+        name = parsed["pattern_id"].replace("_", " ").title()
+    return ProviderInfo(
+        id=source_id,
+        name=name,
+        formats=(FormatSpec(fourcc=0x20424752, width=width, height=height, fps_num=fps),),
+    )
 
 
 def list_test_pattern_sources(
@@ -133,7 +93,7 @@ def list_test_pattern_sources(
     height: int = DEFAULT_PROVIDER_HEIGHT,
     fps: int = DEFAULT_PROVIDER_FPS,
 ) -> list[ProviderInfo]:
-    return [provider_info_from_native(item) for item in _list_test_pattern_sources(width, height, fps)]
+    return [describe_source_id(f"test:{pid}", width=width, height=height, fps=fps) for pid in _PATTERN_IDS]
 
 
 def list_usb_sources(
@@ -143,4 +103,21 @@ def list_usb_sources(
     height: int = DEFAULT_PROVIDER_HEIGHT,
     fps: int = DEFAULT_PROVIDER_FPS,
 ) -> list[ProviderInfo]:
-    return [provider_info_from_native(item) for item in _list_usb_sources(max_probe, width, height, fps)]
+    try:
+        import cv2  # type: ignore
+    except ImportError:
+        return []
+    out: list[ProviderInfo] = []
+    for index in range(max_probe):
+        cap = cv2.VideoCapture(index)
+        try:
+            if cap.isOpened():
+                out.append(describe_source_id(f"usb:{index}", width=width, height=height, fps=fps))
+        finally:
+            cap.release()
+    return out
+
+
+PATTERN_NAMES: dict[Pattern, str] = {
+    Pattern(pid): describe_source_id(f"test:{pid}").name for pid in _PATTERN_IDS
+}

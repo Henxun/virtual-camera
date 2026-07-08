@@ -765,9 +765,10 @@ MediaSourceActivate::MediaSourceActivate() {
     Log("MediaSourceActivate::ctor attrs=%p", (void*)attributes_);
 
     // Set the device stream attributes the frame server reads during Start.
-    // MF_DEVICESTREAM_STREAM_CATEGORY = KSCATEGORY_VIDEO_CAMERA so the
-    // device shows up under video capture.
-    attributes_->SetGUID(MF_DEVICESTREAM_STREAM_CATEGORY, KSCATEGORY_VIDEO_CAMERA);
+    // This must match GetStreamAttributes(): the stream category is the capture
+    // pin, while KSCATEGORY_VIDEO_CAMERA is only for MFCreateVirtualCamera
+    // device registration/aggregation.
+    attributes_->SetGUID(MF_DEVICESTREAM_STREAM_CATEGORY, PINNAME_VIDEO_CAPTURE);
     attributes_->SetUINT32(MF_DEVICESTREAM_STREAM_ID, kStreamIdVideo);
     attributes_->SetUINT32(MF_DEVICESTREAM_IMAGE_STREAM, FALSE);
     attributes_->SetUINT32(MF_DEVICESTREAM_FRAMESERVER_SHARED, TRUE);
