@@ -388,6 +388,23 @@ public:
             return false;
         }
 
+        // Negotiate the stream format (BGRA) before StartStream. The
+        // CMIOExtension sink stream requires the client to select a format, or
+        // CMIODeviceStartStream fails before reaching the extension's
+        // startStreamAndReturnError (observed as -7).
+        CMIOObjectPropertyAddress fmtAddr = {
+            kCMIOStreamPropertyFormatDescription,
+            kCMIOObjectPropertyScopeGlobal,
+            kCMIOObjectPropertyElementMain,
+        };
+        CMFormatDescriptionRef fmt = format_description_;
+        OSStatus fmtStatus = CMIOObjectSetPropertyData(sink_stream_, &fmtAddr, 0, nullptr,
+                                                       sizeof(fmt), &fmt);
+        std::fprintf(stderr, "[akvc] sink stream format set (BGRA) status=%d device=0x%x stream=0x%x\n",
+                     static_cast<int>(fmtStatus),
+                     static_cast<unsigned>(device_id_),
+                     static_cast<unsigned>(sink_stream_));
+
         status = CMIODeviceStartStream(device_id_, sink_stream_);
         if (status != noErr) {
             if (error != nullptr) {
