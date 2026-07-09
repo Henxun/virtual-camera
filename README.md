@@ -1,178 +1,89 @@
 # AK Virtual Camera
 
-Cross-platform virtual camera for video conferencing, livestreaming, and AI effects.
+Cross-platform virtual camera workspace.
 
-- **Windows**: DirectShow Source Filter (Phase 2) + Media Foundation Virtual Camera (Phase 3)
-- **macOS**: CoreMediaIO Camera Extension (Phase 4)
-- **Desktop**: Python 3.11–3.14 + PySide6, MVVM
+- **`virtualcam/`** — native virtual-camera driver layer
+  - Windows: DirectShow + Media Foundation
+  - macOS: CoreMediaIO Camera Extension
+- **`camera-core/`** — pure C++ / ObjC++ control layer for opening the virtual camera, starting the runtime path, and pushing frames
+- **`apps/desktop/`** — PySide6 desktop app built on top of the thin Python binding
 
-> Phase 2 (this snapshot) ships the Windows DirectShow MVP.
-> The device appears in OBS Studio, Zoom, Chrome `getUserMedia`, WeChat, QQ, Discord, etc.
-> Microsoft Teams (new) / Edge / Chrome via MFCapture / new Skype are covered in Phase 3.
+## Current architecture
 
-## Quick start (SDK consumers)
+The canonical architecture in this repo is:
 
-Recommended for external PySide6 / Python apps:
+1. native driver/runtime under `virtualcam/`
+2. cross-platform control API under `camera-core/`
+3. thin Python compatibility layer for the desktop app and Python-based integrations
 
-```bash
-pip install <repo-url>
-```
+That means the old `akvc.sdk` and `akvc` CLI surfaces should be understood as **compatibility/integration entrypoints**, not as the primary architecture definition.
 
-After install you can use:
+For the current macOS baseline, see:
+- [docs/macos/architecture.md](docs/macos/architecture.md)
+- [docs/phase4/implementation-plan.md](docs/phase4/implementation-plan.md)
+- [docs/phase4/verification-plan.md](docs/phase4/verification-plan.md)
 
-```python
-from akvc.sdk import VirtualCamera
-```
+## What is verified now
 
-If your host app needs to bundle the AKVC native runtime into its own package
-layout, the package now also exposes distribution helpers:
+- Windows virtual-camera paths have been validated across the current DirectShow / Media Foundation rollout.
+- macOS Camera Extension flow has passed acceptance on a real Mac.
+- The macOS packaging flow includes a Nuitka app-bundle path used for validation in this repo.
 
-```python
-from akvc.distribution import prepare_macos_host_runtime
+## Integration surfaces
 
-prepared = prepare_macos_host_runtime(
-    "dist/amaran Desktop.app",
-    app_executable="dist/amaran Desktop.app/Contents/MacOS/amaran Desktop",
-    embed_extension=True,
-)
-layout = prepared.layout
-env = prepared.env
-```
+### Canonical control surface
 
-That pattern is intended for external desktop apps such as `amaran-desktop`:
-- `pip install` the SDK package
-- copy packaged AKVC runtime assets into your own app bundle/resources
-- optionally embed the generated `.systemextension` into `Contents/Library/SystemExtensions`
-- pass the returned env vars into your app's virtual-camera backend
+The preferred long-term integration target is the native control layer under `camera-core/`.
+Its public contract is centered on the `akvc::VirtualCamera` C++ API plus the platform sessions behind it.
 
-If you want the install step itself to generate the local macOS build outputs
-before packaging the Python wheel/editable install, set:
+### Python compatibility surface
 
-```bash
-AKVC_BUILD_MACOS_RUNTIME=1 pip install -e .
-```
+The repo still keeps a thin Python binding and compatibility-oriented Python surfaces for:
 
-Optional overrides:
-- `AKVC_MACOS_ARCHS="arm64 x86_64"`
-- `AKVC_MACOS_DEPLOYMENT_TARGET=13.0`
+- the desktop app in [apps/desktop](apps/desktop)
+- Python-based diagnostics and demos
+- external Python/PySide6 integrations that are not ready to move to the native API directly
 
-The package builds and bundles the Windows runtime assets during installation:
-- `akvc_helper.exe`
-- `akvc-mf.dll`
-- `akvc-dshow.dll`
+Those surfaces remain supported as integration helpers, but they are not the source of truth for architecture decisions.
 
-Minimal example:
+## macOS packaging and validation
 
-```python
-import numpy as np
-from akvc.sdk import VirtualCamera
+The current repo-owned macOS packaging helper is [tools/package_nuitka.py](tools/package_nuitka.py).
+It exists to package the desktop app, patch the bundle metadata, embed the `.systemextension`, and sign the resulting `.app` for validation.
 
-vc = VirtualCamera()
-vc.start(name="AK Virtual Camera")
+For contributor-facing macOS validation and debug flow, see:
+- [docs/phase4/run-debug-guide.md](docs/phase4/run-debug-guide.md)
+- [docs/phase4/verification-plan.md](docs/phase4/verification-plan.md)
 
-frame = np.zeros((720, 1280, 3), dtype=np.uint8)
-vc.push_frame(frame)
-vc.shutdown()
-```
-
-On macOS you can also bind the default target name at construction time and
-let the first `send()` / `push_frame()` trigger an implicit startup:
-
-```python
-import numpy as np
-from akvc.sdk import VirtualCamera
-
-vc = VirtualCamera(
-    width=1280,
-    height=720,
-    fps=30,
-    camera_name="AK Virtual Camera",
-    direct_only=True,
-)
-
-frame = np.zeros((720, 1280, 3), dtype=np.uint8)
-vc.send(frame)
-vc.shutdown()
-```
-
-On macOS, if you want the closest path to
-`/Users/admir/workspace/cameraextension/vcam.mm` and do not want a helper in
-the frame hot path, you can also use the native direct-sender object directly:
-
-```python
-import numpy as np
-from akvc import MacDirectCameraSender
-
-sender = MacDirectCameraSender(
-    width=1280,
-    height=720,
-    fps=30.0,
-    camera_name="AK Virtual Camera",
-)
-try:
-    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
-    sender.send(frame)
-finally:
-    sender.stop()
-```
-
-If you prefer to stay on the higher-level SDK surface while still requiring the
-pure macOS direct path, use:
-
-```python
-from akvc.sdk import VirtualCamera
-
-vc = VirtualCamera(width=1280, height=720, fps=30, direct_only=True)
-```
-
-Important:
-- `pip install` does **not** automatically register the DShow filter or grant admin rights.
-- On Windows you still need an elevated shell for registration/runtime steps that require it.
-- If you want OBS / Zoom / GraphStudioNext to discover the DShow device, run:
-
-```bash
-akvc register
-akvc status
-akvc doctor
-```
-
-For deeper diagnosis in a development checkout:
-
-```bash
-uv run python tools/diag/dshow_enum.py
-```
-
-That script verifies DShow registration, DirectShow enumeration, and live frame-bus traffic on `Global\\akvc-frames-v1`.
-
-If you need the desktop app dependencies too:
-
-```bash
-pip install "<repo-url>[desktop]"
-```
-
-## Quick start (developers)
+## Developer quick start
 
 ```bat
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .[desktop]
-
 python tools\make.py configure
 python tools\make.py build --python
-python tools\make.py register      # admin required
+```
+
+Desktop app:
+
+```bat
 python -m akvc_app
 ```
 
-During local development, runtime asset lookup prefers fresh binaries under `build/bin/Release`, then the staged install-time runtime under `build/package-runtime/bin`, before packaged runtime resources.
+Windows registration / diagnostics when needed:
 
-See:
-- `docs/integration-guide.md`
-- `docs/phase2/build-guide.md`
-- `docs/phase2/verification-plan.md`
+```bat
+python tools\make.py register
+uv run python tools/diag/dshow_enum.py
+```
+
+## Compatibility note
+
+If you still consume `akvc.sdk` or the `akvc` CLI from older tooling, treat them as compatibility wrappers around the newer runtime/control-layer direction. New documentation and architecture decisions should follow the native `virtualcam/` + `camera-core/` split first.
 
 ## License
 
-Apache-2.0. See `LICENSE` and `NOTICE`.
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-The DirectShow filter base classes (`third_party/baseclasses/`) are
-distributed under Microsoft's sample license terms.
+The DirectShow filter base classes under `third_party/baseclasses/` are distributed under Microsoft's sample license terms.
