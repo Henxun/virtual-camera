@@ -349,6 +349,38 @@ public:
             return false;
         }
 
+        // Request camera permission (TCC) on the main thread before any
+        // AVCaptureDevice access. Without permission,
+        // AVCaptureDeviceDiscoverySession returns empty -> "camera device not
+        // found". A repackaged ad-hoc-signed app is treated as a new identity,
+        // so this re-triggers the prompt each rebuild.
+        __block BOOL camera_granted = NO;
+        dispatch_semaphore_t cam_sem = dispatch_semaphore_create(0);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (@available(macOS 14.0, *)) {
+                [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
+                    camera_granted = granted;
+                    dispatch_semaphore_signal(cam_sem);
+                }];
+            } else {
+                #pragma clang diagnostic push
+                #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
+                    camera_granted = granted;
+                    dispatch_semaphore_signal(cam_sem);
+                }];
+                #pragma clang diagnostic pop
+            }
+        });
+        dispatch_semaphore_wait(cam_sem, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC));
+        std::fprintf(stderr, "[akvc] camera permission granted=%d\n", (int)camera_granted);
+        if (!camera_granted) {
+            if (error != nullptr) {
+                *error = @"camera permission not granted (System Settings -> Privacy & Security -> Camera)";
+            }
+            return false;
+        }
+
         AVCaptureDevice* device = findDevice(camera_name);
         if (device != nil) {
             device_id_ = findDeviceObject(device.uniqueID, error);
