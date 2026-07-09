@@ -723,29 +723,42 @@ private:
         if (![device_types containsObject:AVCaptureDeviceTypeExternalUnknown]) {
             [device_types addObject:AVCaptureDeviceTypeExternalUnknown];
         }
-        AVCaptureDeviceDiscoverySession* discovery_session =
-            [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:device_types
-                                                                   mediaType:AVMediaTypeVideo
-                                                                    position:AVCaptureDevicePositionUnspecified];
-        // Diagnostic: log all discovered AVFoundation device names so we can see
-        // whether the camera-extension device is exposed to the host.
-        NSMutableString* discovered_names = [NSMutableString string];
-        for (AVCaptureDevice* d in discovery_session.devices) {
-            [discovered_names appendFormat:@"[%@] ", d.localizedName];
-        }
-        std::fprintf(stderr, "[akvc] AVFoundation discovered %lu device(s): %s (looking for '%s')\n",
-                     (unsigned long)discovery_session.devices.count,
-                     [discovered_names UTF8String],
-                     [name UTF8String]);
-        AVCaptureDevice* matched_device = matchDeviceByName(discovery_session.devices, name);
-        if (matched_device != nil) {
-            return matched_device;
-        }
-
+        // The camera-extension device is exposed asynchronously (the extension
+        // process starts on-demand). A one-shot .devices query races the
+        // extension startup - poll AVFoundation for up to ~8s until the device
+        // appears. (FaceTime's live session sees it; a single background-thread
+        // query often does not.)
+        const int kMaxAttempts = 16;
+        const NSTimeInterval kPollInterval = 0.5;
+        for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+            @autoreleasepool {
+                AVCaptureDeviceDiscoverySession* discovery_session =
+                    [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:device_types
+                                                                           mediaType:AVMediaTypeVideo
+                                                                            position:AVCaptureDevicePositionUnspecified];
+                NSMutableString* discovered_names = [NSMutableString string];
+                for (AVCaptureDevice* d in discovery_session.devices) {
+                    [discovered_names appendFormat:@"[%@] ", d.localizedName];
+                }
+                std::fprintf(stderr, "[akvc] findDevice attempt %d: %lu device(s): %s (looking for '%s')\n",
+                             attempt + 1, (unsigned long)discovery_session.devices.count,
+                             [discovered_names UTF8String], [name UTF8String]);
+                AVCaptureDevice* matched = matchDeviceByName(discovery_session.devices, name);
+                if (matched == nil) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        return matchDeviceByName([AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo], name);
+                    matched = matchDeviceByName([AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo], name);
 #pragma clang diagnostic pop
+                }
+                if (matched != nil) {
+                    return matched;
+                }
+            }
+            if (attempt + 1 < kMaxAttempts) {
+                [NSThread sleepForTimeInterval:kPollInterval];
+            }
+        }
+        return nil;
     }
 
     CMIODeviceID findDeviceObjectByName(NSString* name, NSString** error) const {
