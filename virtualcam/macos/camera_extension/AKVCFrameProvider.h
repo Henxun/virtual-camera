@@ -42,6 +42,7 @@ typedef NS_ENUM(NSInteger, AKVCFrameReadStatus) {
 - (void)closeFrameReader;
 - (void)storeClientSampleBuffer:(CMSampleBufferRef)sampleBuffer
                   discontinuity:(CMIOExtensionStreamDiscontinuityFlags)discontinuity;
+- (void)clearLatestClientSampleBuffer;
 - (CMSampleBufferRef _Nullable)copyLatestClientSampleBufferWithDiscontinuity:
                                    (CMIOExtensionStreamDiscontinuityFlags*)outDiscontinuity
                                                                 error:(NSError* _Nullable* _Nullable)outError

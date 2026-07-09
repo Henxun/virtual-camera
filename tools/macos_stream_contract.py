@@ -92,6 +92,7 @@ def parse_frame_provider_contract(header_text: str, impl_text: str) -> dict[str,
         "stale": _parse_discontinuity_mapping(impl_text, "AKVC_FLAG_STALE"),
         "error": _parse_discontinuity_mapping(impl_text, "AKVC_FLAG_ERROR"),
     }
+    latest_method = _extract_method(impl_text, "copyLatestClientSampleBufferWithDiscontinuity")
 
     return {
         "status_enum": status_enum,
@@ -130,6 +131,11 @@ def parse_frame_provider_contract(header_text: str, impl_text: str) -> dict[str,
             "_pendingConfigurationDiscontinuity = NO;",
         ),
         "discontinuity_mappings": discontinuity_mappings,
+        "latest_client_sample_retained_between_ticks": "CFRelease(_latestClientSampleBuffer);" not in latest_method
+        and "_latestClientSampleBuffer = nil;" not in latest_method,
+        "latest_client_sample_retimed_for_output_tick": "CMSampleBufferCreateCopyWithNewTiming" in latest_method
+        and "CMClockGetTime(CMClockGetHostTimeClock())" in latest_method,
+        "latest_client_discontinuity_is_one_shot": "_latestClientDiscontinuity = CMIOExtensionStreamDiscontinuityFlagNone;" in latest_method,
     }
 
 
@@ -200,6 +206,9 @@ def parse_sink_stream_source_contract(header_text: str, impl_text: str) -> dict[
         and "CMIOExtensionPropertyStreamSinkBuffersRequiredForStartup" in impl_text
         and "CMIOExtensionPropertyStreamSinkBufferUnderrunCount" in impl_text
         and "CMIOExtensionPropertyStreamSinkEndOfData" in impl_text,
+        "clears_latest_client_frame_on_stop": "[self.frameProvider clearLatestClientSampleBuffer];" in _extract_method(
+            impl_text, "stopStreamAndReturnError"
+        ),
     }
 
 
@@ -338,6 +347,9 @@ def evaluate_contract() -> dict[str, Any]:
             "stale": "CMIOExtensionStreamDiscontinuityFlagSampleDropped",
             "error": "CMIOExtensionStreamDiscontinuityFlagUnknown",
         },
+        "latest_client_frame_replay_prevents_flicker": frame_provider["latest_client_sample_retained_between_ticks"] is True
+        and frame_provider["latest_client_sample_retimed_for_output_tick"] is True
+        and frame_provider["latest_client_discontinuity_is_one_shot"] is True,
         "property_surface_complete": stream_source["available_properties"] == expected_properties
         and stream_source["readable_properties"] == expected_properties
         and stream_source["settable_properties"]
@@ -367,6 +379,7 @@ def evaluate_contract() -> dict[str, Any]:
         and sink_stream["stores_client_buffers"] is True
         and sink_stream["polls_streaming_clients"] is True
         and sink_stream["tracks_sink_queue_depth_properties"] is True,
+        "sink_stop_clears_latest_client_frame": sink_stream["clears_latest_client_frame_on_stop"] is True,
     }
     consistency["all_checks_passed"] = all(bool(value) for value in consistency.values())
 

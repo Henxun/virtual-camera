@@ -159,6 +159,7 @@ static NSError* AKVCSinkStreamSourceError(NSInteger code, NSString* description)
     }
     self.streaming = NO;
     self.sinkEndOfData = @YES;
+    [self.frameProvider clearLatestClientSampleBuffer];
     if (self.timer != nil) {
         dispatch_source_cancel(self.timer);
         self.timer = nil;

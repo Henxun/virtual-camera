@@ -150,6 +150,16 @@ static NSError* AKVCFrameProviderPixelBufferAccessError(NSInteger code, NSString
     }
 }
 
+- (void)clearLatestClientSampleBuffer {
+    @synchronized(self) {
+        if (_latestClientSampleBuffer != nil) {
+            CFRelease(_latestClientSampleBuffer);
+            _latestClientSampleBuffer = nil;
+        }
+        _latestClientDiscontinuity = CMIOExtensionStreamDiscontinuityFlagNone;
+    }
+}
+
 - (CMSampleBufferRef)copyLatestClientSampleBufferWithDiscontinuity:
                            (CMIOExtensionStreamDiscontinuityFlags*)outDiscontinuity
                                                         error:(NSError* _Nullable __autoreleasing*)outError {
@@ -161,14 +171,29 @@ static NSError* AKVCFrameProviderPixelBufferAccessError(NSInteger code, NSString
         if (_latestClientSampleBuffer == nil) {
             return nil;
         }
-        CMSampleBufferRef retainedSampleBuffer = (CMSampleBufferRef)CFRetain(_latestClientSampleBuffer);
         if (outDiscontinuity != nil) {
             *outDiscontinuity = _latestClientDiscontinuity;
         }
-        CFRelease(_latestClientSampleBuffer);
-        _latestClientSampleBuffer = nil;
         _latestClientDiscontinuity = CMIOExtensionStreamDiscontinuityFlagNone;
-        return retainedSampleBuffer;
+
+        CMSampleTimingInfo timing = {
+            .duration = self.activeFrameDuration,
+            .presentationTimeStamp = CMClockGetTime(CMClockGetHostTimeClock()),
+            .decodeTimeStamp = kCMTimeInvalid,
+        };
+        CMSampleBufferRef retimedSampleBuffer = nil;
+        OSStatus status = CMSampleBufferCreateCopyWithNewTiming(
+            kCFAllocatorDefault,
+            _latestClientSampleBuffer,
+            1,
+            &timing,
+            &retimedSampleBuffer
+        );
+        if (status == noErr && retimedSampleBuffer != nil) {
+            return retimedSampleBuffer;
+        }
+
+        return (CMSampleBufferRef)CFRetain(_latestClientSampleBuffer);
     }
 }
 

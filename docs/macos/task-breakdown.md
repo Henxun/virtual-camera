@@ -120,10 +120,10 @@
     - 已完成语法校验与最小回放脚本验证：`smoke-direct-push-ok`、`install-session-direct-push-ok`、`make-smoke-wrapper-direct-push-ok`
 26. 本轮继续把 Camera Extension demo bridge 的并发安全与回归证据补齐：
     - `AKVCFrameProvider` 当前已把 `selectFormatAtIndex / selectFrameDuration / closeFrameReader / storeClientSampleBuffer / copyLatestClientSampleBufferWithDiscontinuity / copyNextSampleBufferWithStatus / copyFallbackSampleBuffer / copyPlaceholderSampleBuffer` 收敛到同一把 `@synchronized(self)` 锁下
-    - `copyLatestClientSampleBufferWithDiscontinuity(...)` 当前会在空缓存路径先清零 `outDiscontinuity`，并在成功返回后消费掉 `_latestClientSampleBuffer`，避免 source stream 永久重放旧帧
+    - `copyLatestClientSampleBufferWithDiscontinuity(...)` 当前会在空缓存路径先清零 `outDiscontinuity`，并在成功返回后保留 `_latestClientSampleBuffer`、重新打当前 host timing；这样 source stream 在 sink 帧间隙重复最新真实帧，避免 OBS 看到真实帧与 placeholder 交替闪烁
     - demo fallback 的活动格式快照当前也会在同步块内读取，避免 live property change 与 fallback source 更新看到不一致的格式状态
     - 已新增 runtime smoke：验证客户端 sample buffer 只会被消费一次；若当前宿主环境不支持该 CoreMedia 路径，会显式 `skip` 而不是制造误报
-    - 已新增源码契约测试：固定上述关键同步点与“消费后清空缓存”语义，防止后续回归
+    - 已新增源码契约测试：固定上述关键同步点与“保留最新 client frame、sink stop 清空缓存”语义，防止后续回归
     - 当前定向验证结果：
       - `tests/unit/test_macos_native_skeleton.py tests/unit/test_macos_ipc.py tests/unit/test_macos_framebus_contract_tool.py` -> `29 passed, 2 skipped`
       - `tests/unit/test_macos_runtime_sync.py tests/unit/test_macos_stream_contract_tool.py tests/unit/test_macos_virtual_camera.py tests/unit/test_macos_direct_sender.py tests/unit/test_macos_shm_sink.py` -> `100 passed`
