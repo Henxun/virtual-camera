@@ -727,6 +727,16 @@ private:
             [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:device_types
                                                                    mediaType:AVMediaTypeVideo
                                                                     position:AVCaptureDevicePositionUnspecified];
+        // Diagnostic: log all discovered AVFoundation device names so we can see
+        // whether the camera-extension device is exposed to the host.
+        NSMutableString* discovered_names = [NSMutableString string];
+        for (AVCaptureDevice* d in discovery_session.devices) {
+            [discovered_names appendFormat:@"[%@] ", d.localizedName];
+        }
+        std::fprintf(stderr, "[akvc] AVFoundation discovered %lu device(s): %s (looking for '%s')\n",
+                     (unsigned long)discovery_session.devices.count,
+                     [discovered_names UTF8String],
+                     [name UTF8String]);
         AVCaptureDevice* matched_device = matchDeviceByName(discovery_session.devices, name);
         if (matched_device != nil) {
             return matched_device;
