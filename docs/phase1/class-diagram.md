@@ -482,7 +482,7 @@ classDiagram
     }
 
     class WinVirtualCamera
-    class MacVirtualCamera
+    class MacVirtualCameraSession
     class WinFrameBus
     class MacFrameBus
     class WinRegistrar
@@ -491,7 +491,7 @@ classDiagram
     class MacXPCClient
 
     IVirtualCamera <|.. WinVirtualCamera
-    IVirtualCamera <|.. MacVirtualCamera
+    IVirtualCamera <|.. MacVirtualCameraSession
     IFrameBus      <|.. WinFrameBus
     IFrameBus      <|.. MacFrameBus
     IRegistrar     <|.. WinRegistrar

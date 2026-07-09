@@ -179,7 +179,7 @@
    - `direct_sender_device_snapshot.cmio_devices`
 4. 如果 `requested_camera_access_snapshot.camera_access_status` 仍然是 `denied`，说明权限请求链已打通，但当前宿主进程的 TCC 状态本身仍然拒绝访问
    - `macos_direct_sender_object_demo.py --report-json ...` 现在即使真实推帧失败，也会自动回退成 inspect 报告并把 `error / direct_sender_last_error` 写进 JSON，适合保留失败现场
-5. 如果 pure object 路径 snapshot 已正常，但你还想确认统一 SDK 外观是否也能看到同一组 native 设备，再运行：
+5. 如果 pure object 路径 snapshot 已正常，但你还想确认 Python 兼容层是否也能看到同一组 native 设备，再运行：
    - `python3 tools/macos_direct_push_demo.py --probe-only --request-camera-access --direct-sender-library build/macos/Build/Products/Release/libakvc-macos-direct-sender.dylib`
 6. 外部 Python 应用当前也可直接调用：
    - `MacDirectCameraSender(camera_name=..., ...)`
@@ -187,7 +187,7 @@
    - `MacDirectCameraSender.request_camera_access()`
    - `MacDirectCameraSender.direct_sender_readiness(request_camera_access=True)`
    在真正 `send()` 前先拿 native snapshot
-7. 如果你更想从统一 SDK 入口验证，也可继续使用：
+7. 如果你更想从 Python 兼容层入口验证，也可继续使用：
    - `VirtualCamera(direct_only=True, ...)`
    - `VirtualCamera.direct_sender_device_snapshot()`
    - `VirtualCamera.request_camera_access()`
@@ -241,7 +241,7 @@
 5. 当前真实帧路径仅支持 `NV12` 数据面；若后续要直通 `YUY2 / MJPG / RGB24`，需要继续扩展 `FrameProvider`
 6. 当前 Python 安装服务已支持“可发现 pkg 时先执行 `/usr/sbin/installer`，再继续 `akvc-macos-install`”的自动链路，但仍需在真实管理员权限与系统批准场景下完成端到端验证
 7. 在无法直接跑 `xcodebuild` 的环境下，可先运行 `python3 tools/macos_native_verify.py` 做原生树静态验证
-   - 当前这条路径不仅会检查 control-bridge / extension / plist / IPC 语法，也会顺带检查 `tools/macos_sdk_contract.py`，用于确认 Python SDK 面没有和当前 Windows 对外接口约定漂移
+   - 当前这条路径不仅会检查 control-bridge / extension / plist / IPC 语法，也会顺带检查 `tools/macos_sdk_contract.py`，用于确认 Python 兼容层没有和当前 Windows 对外接口约定漂移
 8. 当前已补充 `python3 tools/make.py verify-native` 统一入口，建议优先用该命令代替直接调用校验脚本
 9. 如果打包测试阶段 `build_dmg.sh` 报 `hdiutil: create failed - device not configured`，通常表示当前 runner/沙箱不支持挂载 DMG 设备，不等同于 `pkg / zip` 脚本本身失败
 10. 如果 `status` 显示已安装但 `enumerated_devices` 仍为空，应优先检查 Camera Extension 是否真正出现在系统视频设备列表，而不是只看系统扩展批准状态
@@ -253,11 +253,11 @@
 16. 当前桌面端、`akvc --json` 与 `macos_smoke.py` 都会输出 `verification_targets`；如果某个应用仍不可见，应优先按对应应用的 `steps` 定位问题，而不是泛化为同一类“设备不可见”
 17. 如果需要沉淀一次完整验收结果，建议使用 `macos_validation_report.py` 把状态、benchmark 与手工应用验证记录汇总成单一 JSON，而不是分散保存多份输出
 18. 如果需要证明 “PySide6 直接调用” 路径已跑通，建议先运行 `pyside6_virtual_camera_demo.py --report-json ...`，再把该 JSON 作为 `--demo-json` 输入给 `macos_validation_report.py`
-19. 当前这条 demo 路径已优先走统一 SDK 入口，而不是默认直接实例化 integration helper：
+19. 当前这条 demo 路径已优先走 Python 兼容层入口，而不是默认直接实例化 integration helper：
     - `provider / latest-provider / video-file` 优先通过 `VirtualCamera.create_pyside6_streamer()`
     - `latest-provider` 还会优先通过 `VirtualCamera.create_latest_frame_provider()`
     - `widget / screen` 直接通过 `VirtualCamera.send_widget()` / `send_screen()`
-    因此如果 demo 通过，而外部 PySide6 项目仍失败，应优先对比自己的调用方式是否仍绕过了 SDK
+    因此如果 demo 通过，而外部 PySide6 项目仍失败，应优先对比自己的调用方式是否仍绕过了 Python 兼容层。
 19. 如果想确认某次会话到底走了哪条 Python 入口，不必只看 `mode`，现在也可以直接看：
     - `validation-report.json.summary.demo_python_entrypoint_kind`
     - `session-manifest.json.summary.validation_demo_python_entrypoint_kind`
@@ -290,7 +290,7 @@
 24. 如果 `macos_validation_session.py --mode video-file` 直接报错，先检查是否同时传入了 `--video-path`
 25. 如果要模拟 WebRTC / AI Avatar 这类“生产者异步提交最新帧”的场景，优先使用 `--mode latest-provider`，而不是普通的 `provider`
 26. 如果需要一次性沉淀六档性能基线，优先使用 `macos_validation_session.py --benchmark-matrix` 或 `tools/make.py validation-session --benchmark-matrix`
-27. 当前 `akvc status`、`akvc install`、桌面端安装页与 `MacVirtualCamera.status()/enumerate_devices()/is_installed()` 已不再要求先安装 `numpy` / `cv2`；如果只是安装链路失败，不要先把问题归因到视频依赖缺失
+27. 当前 `akvc status`、`akvc install`、桌面端安装页与 `VirtualCamera.status()/enumerate_devices()/is_installed()` 已不再要求先安装 `numpy` / `cv2`；如果只是安装链路失败，不要先把问题归因到视频依赖缺失
 28. 桌面端 `ServiceFacade` 当前也已做惰性导入处理；如果只是打开安装页、点击 `Install`、`Open Settings` 或 `Recheck`，不应该再因为 `numpy` / `cv2` 缺失而直接启动失败
 29. 如果你自己的 `start_provider_stream(...)` provider 不是每个 tick 都有新帧，不必强行构造占位图：
     - 可以抛 `LookupError("no frame yet")`
@@ -315,7 +315,7 @@
     - `producer_control.producer_seq = 1`
     - 但 `observed.direct_open_errno = 13`
     说明 producer 已成功写入控制块，但独立原生 probe 进程被当前环境拒绝访问 POSIX shm；这更像受管沙箱/运行环境限制，仍需在外部 macOS runner 或普通 shell 复核
-41. 当前 `akvc status`、`akvc install`、桌面端安装状态与 `MacVirtualCamera.start()` 现在也会直接透出：
+41. 当前 `akvc status`、`akvc install`、桌面端安装状态与 `VirtualCamera.start()` 现在也会直接透出：
     - `ipc_probe_present`
     - `ipc_ready`
     - `ipc_environment_blocked`
@@ -462,7 +462,7 @@
     - `benchmark_report.summary.benchmark_acceptance.required_profiles_present`
     - `benchmark_report.summary.benchmark_acceptance.missing_required_profiles`
     现在上层验收不会再把“只跑了部分 profile、且这些 profile FPS 都达标”误判成完整性能验收通过；六档 `720/1080/4K x 30/60` 只要缺一档，`benchmark_matrix_complete` 就不会是 `pass`
-44. 如果在完整依赖环境里运行 `framebus-roundtrip` 或直接观察 `MacVirtualCamera.consumer_count`，而该值始终是 `0`，现在可以把它解读为“原生 consumer 尚未真正附着”或“当前环境阻止了 consumer 打开共享内存”；这比之前单纯看到 `0` 更有诊断意义，因为 macOS consumer 侧已开始维护该字段
+44. 如果在完整依赖环境里运行 `framebus-roundtrip` 或直接观察 `VirtualCamera.consumer_count`，而该值始终是 `0`，现在可以把它解读为“原生 consumer 尚未真正附着”或“当前环境阻止了 consumer 打开共享内存”；这比之前单纯看到 `0` 更有诊断意义，因为 macOS consumer 侧已开始维护该字段
 45. 当前 `tools/macos_framebus_roundtrip.py` 已不再因为缺少 `numpy` 就直接失效；如果现在运行它仍失败，优先看输出 JSON 里的：
     - `observed.status`
     - `observed.direct_open_errno`

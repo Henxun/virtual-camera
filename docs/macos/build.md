@@ -157,7 +157,7 @@
    这条链路开始把验证从“文本协议一致”推进到“跨语言真实互通”
    - 当前还支持 `--producer-kind mac-virtual-camera`，可改为通过公开 `VirtualCamera.start()+push_frame()` 对象路径写入共享内存，再复用同一份 native probe 校验
 17. 已新增 `tools/macos_stream_contract.py`，用于自动校验 `AKVCFrameProvider` 与 `AKVCStreamSource` 的占位帧、超时/断裂处理、流属性面与定时推流语义是否一致
-18. 已新增 `tools/macos_sdk_contract.py`，用于自动校验 `VirtualCamera` 与 `MacVirtualCamera` 的 Python 公共接口、生命周期方法、属性和上下文管理语义是否保持对齐
+18. 已新增 `tools/macos_sdk_contract.py`，用于自动校验 `VirtualCamera` 兼容层的 Python 公共接口、生命周期方法、属性和上下文管理语义是否保持稳定
 19. 已新增 `tools/macos_validation_report.py`，用于把安装状态、设备可见性、benchmark 与人工应用验证结果汇总成单一 JSON 验证工件
 20. `validation-report.json` 当前还会输出 `runtime_assets`，用于记录：
     - Python 侧当前解析到的 `status / install / uninstall / list-devices / sync-ipc / pkg` 路径
@@ -179,13 +179,13 @@
    - `PackageInfo` 中的 `identifier / version / install-location`
    - `pkgutil --payload-files` 中是否包含 Camera Extension payload
    - `akvc-macos-sync-ipc` 是否存在、是否已签名、是否为 `arm64 + x86_64`
-22. 当前 `akvc.sdk.virtual_camera`、`akvc.platforms.macos.virtual_camera` 与 `akvc.core` 已进一步收紧惰性导入边界：`status / install / enumerate_devices` 等安装侧路径在未推帧前不再强制加载 `frame_input / frame_pipeline / numpy / cv2`
+22. 当前 `akvc.sdk.virtual_camera` 与 `akvc.core` 已进一步收紧惰性导入边界：`status / install / enumerate_devices` 等安装侧路径在未推帧前不再强制加载 `frame_input / frame_pipeline / numpy / cv2`
 23. 已新增 `tools/macos_input_contract.py`，用于自动校验 `Frame/QImage/QPixmap/numpy/OpenCV` 输入矩阵、PySide6 bridge / streamer 入口，以及 demo `numpy-direct / provider / latest-provider / image / pixmap / widget / screen / video-file` 模式面是否仍保持完整
     当前这条 contract 也已继续覆盖 `akvc.sdk.virtual_camera` 与 `akvc.platforms.macos.virtual_camera` 的公共入口，固定：
    - `push_frame()/send()` 输入入口不会绕开 PySide6/QImage/QPixmap 支持
    - `create_pyside6_bridge()` 与 `send_image()/send_pixmap()/send_widget()/send_screen()` 这组直接 PySide6 入口持续存在
    - `create_latest_frame_provider()/create_pyside6_streamer()` 这组高层 helper 构造入口持续存在
-24. `tools/pyside6_virtual_camera_demo.py` 当前也已优先走统一 SDK 入口，而不是默认直接实例化 integration helper：
+24. `tools/pyside6_virtual_camera_demo.py` 当前也已优先走 Python 兼容层入口，而不是默认直接实例化 integration helper：
     - `numpy-direct` 直接走 `VirtualCamera.push_frame(numpy.ndarray)`，且不依赖 Qt
    - `provider / latest-provider / video-file` 优先通过 `VirtualCamera.create_pyside6_streamer()`
    - `latest-provider` 还会优先通过 `VirtualCamera.create_latest_frame_provider()`
@@ -318,7 +318,7 @@
    - `install_session_shared_memory_name / install_session_mach_service_name / install_session_ipc_transport`
    - `effective_shared_memory_name / effective_mach_service_name / effective_ipc_transport`
    这样 CI 或人工验收在只看主 manifest 时，也能直接判断本次会话最终实际落到哪条共享内存命名、Mach Service 与 IPC transport，而不必再翻子工件 JSON
-   当前 `MacVirtualCamera` 运行中如果再次执行 `sync_ipc_configuration_result("/new-shm")`，在原生命令返回 supported+success 后也会把 producer sink 一并重绑到新 shm 名称，避免 Camera Extension 已切换 descriptor，但 Python 侧仍继续向旧共享内存写帧。
+   当前 `VirtualCamera` 运行中如果再次执行 `sync_ipc_configuration_result("/new-shm")`，在原生命令返回 supported+success 后也会把 producer sink 一并重绑到新 shm 名称，避免 Camera Extension 已切换 descriptor，但 Python 侧仍继续向旧共享内存写帧。
 45. `session-summary.md` 当前还会继续输出 `Runtime Topology` 小节：
    - 会直接显示 `runtime_topology_kind=camera_extension_direct_framebus`
    - 会显示 `runtime_host_role=container_activation_command_bridge`
@@ -338,7 +338,7 @@
    - 只要 `validation_app_matrix` 仍在，`session-summary.md` 也会自动回推出 `passed/failed/pending/skipped/unreviewed` 分组和对应计数
    这样 CI / Jenkins 在只消费主 manifest 的场景下，也不会因为上游统计字段缺失而丢失目标应用验收摘要
    这样 validation session 顶层摘要不再只是“字段存在”，而是会被代表性 case 自动验证
-48. 当前还已把 Python 统一入口 contract 接回最终 validation session 会话：
+48. 当前还已把 Python 兼容入口 contract 接回最终 validation session 会话：
    - `tools/macos_validation_session.py` 会在生成 `validation-report.json` 后自动执行 `tools/macos_entrypoints_contract.py`
    - 会默认产出 `entrypoints-contract.json`
    - `session-manifest.json` 的 `artifacts` 当前会登记 `entrypoints_contract_report`
@@ -350,7 +350,7 @@
      - `entrypoints_contract_demo_case_complete`
      - `entrypoints_contract_cli_case_complete`
      - `entrypoints_contract_desktop_case_complete`
-   - `session-summary.md` 当前也会新增 `Python Entrypoints` 小节，直接面向人工验收展示 PySide6 demo / direct-push demo / CLI / desktop 四条入口链是否仍共同走统一 `VirtualCamera`
+   - `session-summary.md` 当前也会新增 `Python Entrypoints` 小节，直接面向人工验收展示 PySide6 demo / direct-push demo / CLI / desktop 四条入口链是否仍共同走 `VirtualCamera` 兼容层
    这样“SDK 契约正确”和“最终验收会话里真的保留了统一入口证据”现在已经收敛为同一条可回放工件链
    - GitHub Actions 与 Jenkins 当前也会把 `build/macos/session/entrypoints-contract.json` 一并归档，避免会话 manifest 中声明了这份工件，但 CI 工件页里却找不到对应证据
 49. `tools/pyside6_virtual_camera_demo.py -> tools/macos_validation_report.py -> tools/macos_validation_session.py -> tools/macos_validation_session_summary.py` 当前还已继续把 `consumer_count` 提升到最终会话摘要层：
@@ -508,7 +508,7 @@
    - `akvc_fb_open()` 成功后会递增
    - `akvc_fb_close()` 关闭时会递减
    - `framebus_consumer_probe.c` 与 `macos_framebus_roundtrip.py` 当前也已开始透出该字段
-48. 这意味着在完整依赖环境里，macOS 侧 `MacVirtualCamera.consumer_count` 与 roundtrip/probe 诊断现在开始具备与 Windows 更接近的“原生 consumer 是否真正附着”可观测性，而不再长期固定为 `0`
+48. 这意味着在完整依赖环境里，macOS 侧 `VirtualCamera.consumer_count` 与 roundtrip/probe 诊断现在开始具备与 Windows 更接近的“原生 consumer 是否真正附着”可观测性，而不再长期固定为 `0`
 49. 当前 `tools/macos_framebus_roundtrip.py` 已进一步收紧到“诊断优先”模式：
    - 导入路径不再强依赖 `numpy`
    - 即使 producer 侧 `shm_open(create)` 就失败，也会输出结构化 JSON，而不再直接抛 traceback
@@ -554,4 +554,4 @@
 56. 关于 `/Users/admir/workspace/cameraextension` 参考项目的结论：
    - 它没有独立常驻 host daemon，因此可以作为“帧热路径绕过 host”的佐证
    - 它仍有 `samplecamera.app` 负责嵌入 `.systemextension` 并提交系统扩展激活请求，因此不能解读为“Camera Extension 完全不需要容器 App”
-   - 当前项目保留 legacy `akvc-host.app` 主要是为了兼容已有安装、CLI、Python SDK 和 CI 验证流程；正式跨平台集成时更推荐把 GUI App 自身改造成 container app，但不能让控制面容器参与每帧转发
+   - 当前项目保留 legacy `akvc-host.app` 主要是为了兼容已有安装、CLI、Python 兼容层和 CI 验证流程；正式跨平台集成时更推荐把 GUI App 自身改造成 container app，但不能让控制面容器参与每帧转发

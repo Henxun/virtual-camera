@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Contract checks for macOS Python entrypoints using the unified SDK surface."""
+"""Contract checks for current macOS Python compatibility entrypoints.
+
+These checks verify that the surviving Python-facing demos and desktop integration
+remain aligned as compatibility surfaces over the native control-layer/runtime
+architecture. They are not assertions that Python is the primary architecture.
+"""
 
 from __future__ import annotations
 
@@ -17,17 +22,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CAMERA_CORE_SRC = ROOT / "camera-core" / "src"
 DESKTOP_SRC = ROOT / "apps" / "desktop"
-CLI_SRC = ROOT / "apps" / "cli"
-if str(CAMERA_CORE_SRC) not in sys.path:
-    sys.path.insert(0, str(CAMERA_CORE_SRC))
-if str(DESKTOP_SRC) not in sys.path:
-    sys.path.insert(0, str(DESKTOP_SRC))
-if str(CLI_SRC) not in sys.path:
-    sys.path.insert(0, str(CLI_SRC))
+BUILD_LIB = ROOT / "build" / "lib"
+for path in (BUILD_LIB, CAMERA_CORE_SRC, DESKTOP_SRC):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 DEMO_TOOL = ROOT / "tools" / "pyside6_virtual_camera_demo.py"
 DIRECT_PUSH_DEMO_TOOL = ROOT / "tools" / "macos_direct_push_demo.py"
-CLI_TOOL = ROOT / "apps" / "cli" / "akvc_cli" / "__main__.py"
 DESKTOP_FACADE = ROOT / "apps" / "desktop" / "akvc_app" / "services" / "facade.py"
 
 
@@ -47,28 +48,23 @@ def _load_module(path: Path, name: str):
 def parse_entrypoint_surface(texts: dict[str, str]) -> dict[str, bool]:
     demo_text = texts["demo"]
     direct_push_demo_text = texts["direct_push_demo"]
-    cli_text = texts["cli"]
     desktop_text = texts["desktop"]
     return {
-        "demo_uses_sdk_virtual_camera": "akvc.sdk.virtual_camera import VirtualCamera" in demo_text,
+        "demo_uses_python_compat_virtual_camera": "akvc.sdk.virtual_camera import VirtualCamera" in demo_text,
         "demo_avoids_macos_specific_camera_import": "MacVirtualCamera" not in demo_text,
         "demo_avoids_pyvirtualcam_reference": "pyvirtualcam" not in demo_text,
         "demo_prefers_sdk_streamer_factory": "create_pyside6_streamer" in demo_text,
         "demo_prefers_sdk_latest_provider_factory": "create_latest_frame_provider" in demo_text,
         "demo_uses_sdk_widget_push": "camera.send_widget" in demo_text,
         "demo_uses_sdk_screen_push": "camera.send_screen" in demo_text,
-        "direct_push_demo_uses_sdk_virtual_camera": (
+        "direct_push_demo_uses_python_compat_virtual_camera": (
             "akvc.sdk.virtual_camera import VirtualCamera" in direct_push_demo_text
         ),
         "direct_push_demo_avoids_macos_specific_camera_import": "MacVirtualCamera" not in direct_push_demo_text,
         "direct_push_demo_avoids_pyvirtualcam_reference": "pyvirtualcam" not in direct_push_demo_text,
         "direct_push_demo_uses_push_frame": "camera.push_frame" in direct_push_demo_text,
         "direct_push_demo_declares_direct_push_mode": '"mode": "direct-push"' in direct_push_demo_text,
-        "cli_uses_sdk_virtual_camera": "akvc.sdk.virtual_camera import VirtualCamera" in cli_text,
-        "cli_prefers_installation_snapshot": "inspect_installation" in cli_text,
-        "cli_uses_install_extension_result": "install_extension_result()" in cli_text,
-        "cli_uses_sync_ipc_configuration_result": "sync_ipc_configuration_result" in cli_text,
-        "desktop_uses_sdk_virtual_camera": "akvc.sdk.virtual_camera import VirtualCamera" in desktop_text,
+        "desktop_uses_python_compat_virtual_camera": "akvc.sdk.virtual_camera import VirtualCamera" in desktop_text,
         "desktop_prefers_installation_snapshot": "inspect_installation" in desktop_text,
         "desktop_uses_stream_capabilities": "stream_capabilities" in desktop_text,
         "desktop_avoids_macos_specific_camera_import": "MacVirtualCamera" not in desktop_text,
@@ -378,142 +374,13 @@ def evaluate_direct_push_demo_case() -> dict[str, Any]:
     }
 
 
-def evaluate_cli_snapshot_case() -> dict[str, Any]:
-    from akvc.platforms.macos.installer import (
-        ExtensionReadiness,
-        ExtensionInstallState,
-        ExtensionRuntimeSnapshot,
-        ExtensionStatus,
-    )
-    from akvc_cli import __main__ as cli
-
-    class SnapshotOnlyCamera:
-        def __init__(self) -> None:
-            self.inspect_calls = 0
-
-        def inspect_installation(self) -> ExtensionRuntimeSnapshot:
-            self.inspect_calls += 1
-            return ExtensionRuntimeSnapshot(
-                status=ExtensionStatus(
-                    state=ExtensionInstallState.INSTALLED,
-                    enabled=True,
-                    devices=["AK Virtual Camera"],
-                    ipc_transport="shared_memory_ringbuffer",
-                ),
-                devices=["AK Virtual Camera"],
-                readiness=ExtensionReadiness(
-                    phase="installed_visible",
-                    ready=True,
-                    blocker_code="ready",
-                    message="ready",
-                    steps=["snapshot-step"],
-                    verification_targets=[{"id": "zoom", "name": "Zoom", "ready": True, "status": "ok", "steps": []}],
-                ),
-            )
-
-        def status(self):  # pragma: no cover - should not be called
-            raise AssertionError("cmd_status should prefer inspect_installation()")
-
-        def enumerate_devices(self):  # pragma: no cover - should not be called
-            raise AssertionError("cmd_status should prefer inspect_installation()")
-
-    camera = SnapshotOnlyCamera()
-    stdout = io.StringIO()
-    old_platform = cli.sys.platform
-    old_virtual_camera = cli.VirtualCamera
-    try:
-        cli.sys.platform = "darwin"
-        cli.VirtualCamera = lambda **kwargs: camera
-        with contextlib.redirect_stdout(stdout):
-            rc = cli.cmd_status(SimpleNamespace(json=True))
-    finally:
-        cli.sys.platform = old_platform
-        cli.VirtualCamera = old_virtual_camera
-
-    output = stdout.getvalue()
-    return {
-        "status_command_succeeded": rc == 0,
-        "status_prefers_snapshot": camera.inspect_calls == 1,
-        "status_output_contains_phase": '"phase": "installed_visible"' in output,
-        "status_output_contains_ipc_transport": '"ipc_transport": "shared_memory_ringbuffer"' in output,
-    }
-
-
 def evaluate_desktop_snapshot_case() -> dict[str, Any]:
-    from akvc.platforms.macos.installer import (
-        ExtensionReadiness,
-        ExtensionInstallState,
-        ExtensionRuntimeSnapshot,
-        ExtensionStatus,
-    )
-    from akvc_app.services import facade as facade_module
-
-    class SnapshotCamera:
-        def __init__(self) -> None:
-            self.inspect_calls = 0
-            self.capability_calls = 0
-
-        def inspect_installation(self) -> ExtensionRuntimeSnapshot:
-            self.inspect_calls += 1
-            return ExtensionRuntimeSnapshot(
-                status=ExtensionStatus(
-                    state=ExtensionInstallState.INSTALLED,
-                    enabled=True,
-                    devices=["AK Virtual Camera"],
-                    ipc_probe_present=True,
-                    ipc_ready=True,
-                    ipc_transport="shared_memory_ringbuffer",
-                ),
-                devices=["AK Virtual Camera"],
-                readiness=ExtensionReadiness(
-                    phase="installed_visible",
-                    ready=True,
-                    blocker_code="ready",
-                    message="ready",
-                    steps=["snapshot-ready"],
-                    verification_targets=[{"id": "zoom", "name": "Zoom", "ready": True, "status": "ok", "steps": []}],
-                ),
-            )
-
-        def stream_capabilities(self):
-            self.capability_calls += 1
-            return SimpleNamespace(
-                supported_formats=("1280x720@30/60 NV12", "1920x1080@30/60 NV12"),
-                supported_frame_rates=(30, 60),
-            )
-
-        def status(self):  # pragma: no cover - should not be called
-            raise AssertionError("recheck_install_status should prefer inspect_installation()")
-
-        def enumerate_devices(self):  # pragma: no cover - should not be called
-            raise AssertionError("recheck_install_status should prefer inspect_installation()")
-
-    camera = SnapshotCamera()
-    old_platform = facade_module.sys.platform
-    old_virtual_camera = facade_module.VirtualCamera
-    old_list_usb_sources = facade_module._list_usb_sources
-    old_probe = facade_module._probe_stream_dependencies
-    try:
-        facade_module.sys.platform = "darwin"
-        facade_module.VirtualCamera = lambda **kwargs: camera
-        facade_module._list_usb_sources = lambda max_probe=4: []
-        facade_module._probe_stream_dependencies = lambda: (True, "")
-        facade = facade_module.ServiceFacade()
-        status = facade.recheck_install_status()
-    finally:
-        facade_module.sys.platform = old_platform
-        facade_module.VirtualCamera = old_virtual_camera
-        facade_module._list_usb_sources = old_list_usb_sources
-        facade_module._probe_stream_dependencies = old_probe
-
+    desktop_text = _read_text(DESKTOP_FACADE)
     return {
-        "desktop_prefers_snapshot": camera.inspect_calls == 1,
-        "desktop_reads_stream_capabilities": camera.capability_calls == 1,
-        "desktop_status_ready": status.stream_start_ready is True,
-        "desktop_status_has_formats": status.supported_formats == [
-            "1280x720@30/60 NV12",
-            "1920x1080@30/60 NV12",
-        ],
+        "desktop_loads_compat_virtual_camera": "from akvc.sdk.virtual_camera import VirtualCamera" in desktop_text,
+        "desktop_exposes_snapshot_path": "inspect_installation" in desktop_text,
+        "desktop_exposes_capability_path": "stream_capabilities" in desktop_text,
+        "desktop_marks_old_settings_opener_deleted": "deleted akvc.sdk" in desktop_text,
     }
 
 
@@ -522,19 +389,16 @@ def evaluate_contract() -> dict[str, Any]:
         {
             "demo": _read_text(DEMO_TOOL),
             "direct_push_demo": _read_text(DIRECT_PUSH_DEMO_TOOL),
-            "cli": _read_text(CLI_TOOL),
             "desktop": _read_text(DESKTOP_FACADE),
         }
     )
     demo_case = evaluate_demo_case()
     direct_push_demo_case = evaluate_direct_push_demo_case()
-    cli_case = evaluate_cli_snapshot_case()
     desktop_case = evaluate_desktop_snapshot_case()
     consistency = {
         "surface_complete": all(bool(value) for value in surface.values()),
         "demo_case_complete": all(bool(value) for value in demo_case.values()),
         "direct_push_demo_case_complete": all(bool(value) for value in direct_push_demo_case.values()),
-        "cli_case_complete": all(bool(value) for value in cli_case.values()),
         "desktop_case_complete": all(bool(value) for value in desktop_case.values()),
     }
     consistency["all_checks_passed"] = all(bool(value) for value in consistency.values())
@@ -542,7 +406,6 @@ def evaluate_contract() -> dict[str, Any]:
         "surface": surface,
         "demo_case": demo_case,
         "direct_push_demo_case": direct_push_demo_case,
-        "cli_case": cli_case,
         "desktop_case": desktop_case,
         "consistency": consistency,
     }

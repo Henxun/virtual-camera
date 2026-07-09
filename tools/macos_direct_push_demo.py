@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Minimal direct-push virtual camera demo for macOS.
 
-This tool exercises the public Python SDK path without requiring a helper
-process in the frame hot path. It can validate multiple Python entrypoints:
+This tool exercises the surviving Python compatibility entrypoints without requiring a helper
+process in the frame hot path. It validates compatibility behavior layered over the
+native control-layer/runtime architecture:
 
     VirtualCamera.push_frame(...)
     VirtualCamera.send_pixmap(...)

@@ -12,7 +12,15 @@
 
 ---
 
-## 1. 设计目标与不变量
+## 1. 文档定位
+
+> 本文是 **Phase 1 历史设计稿**，用于保留当时的系统设计思路。
+> 若本文与当前代码、[README](../README.md)、[docs/macos/architecture.md](../macos/architecture.md) 或 Phase 4 已验收基线冲突，
+> **以当前实现真值为准**，不要把本文直接当成当前架构说明。
+
+---
+
+## 2. 设计目标与不变量
 
 ### 1.1 设计目标
 
@@ -174,17 +182,16 @@
 
 | 模块 | 责任 | 语言 | Owner 子团队 |
 |---|---|---|---|
-| `apps/desktop` | 桌面应用 (View + ViewModel + ServiceFacade) | Python (PySide6) | 应用组 |
-| `apps/cli` | 命令行：注册/卸载/自检 (`akvc`, `akvc-doctor`) | Python | 应用组 |
-| `camera-core` | FrameProvider / FramePipeline / FrameSink / Effects | Python | 媒体组 |
+| `apps/desktop` | 桌面应用 (View + ViewModel + ServiceFacade + `akvc` 兼容命令面) | Python (PySide6) | 应用组 |
+| `camera-core` | 控制层/兼容层：FrameProvider / FramePipeline / FrameSink / Effects / `VirtualCamera` | Python + C++/pybind11 | 媒体组 |
 | `platform-abi` | 跨平台 C ABI 头文件 + Python 绑定 | C/C++ + Python (cffi) | 架构组 |
 | `virtualcam/windows/dshow` | DShow Source Filter | C++17 | Windows 原生组 |
 | `virtualcam/windows/mf` | MF Virtual Camera Media Source | C++17/20 | Windows 原生组 |
 | `virtualcam/windows/helper` | Helper Service (akvc-helper.exe) | C++17 | Windows 原生组 |
 | `virtualcam/windows/framebus` | 共享内存 Ring 实现（Win） | C++17 | Windows 原生组 |
-| `virtualcam/macos/extension` | CMIO Camera Extension | Swift + Obj-C++ | macOS 原生组 |
-| `virtualcam/macos/helper` | Helper (akvc-helperd) | Swift | macOS 原生组 |
-| `virtualcam/macos/framebus` | IOSurface Ring + XPC | Swift | macOS 原生组 |
+| `virtualcam/macos/camera_extension` | CMIO Camera Extension | Obj-C++ + C/C++ | macOS 原生组 |
+| `virtualcam/macos/control_bridge` | System Extension 激活/状态/卸载控制桥 | Obj-C++ + C/C++ | macOS 原生组 |
+| `virtualcam/macos/ipc` | POSIX shm / IPC 原生实现 | C/C++ + Obj-C++ | macOS 原生组 |
 | `virtualcam/shared` | 帧协议头、错误码、版本号 | C 头文件 | 架构组 |
 | `installer/windows` | NSIS 脚本 + 子组件签名 | NSIS | 发布工程 |
 | `installer/macos` | pkgbuild + productbuild + 公证 | shell | 发布工程 |
@@ -563,8 +570,17 @@ virtual-camera/
 │   │   │   └── __main__.py
 │   │   ├── tests/
 │   │   └── pyproject.toml
-│   └── cli/                           # akvc / akvc-doctor
-│       ├── akvc_cli/
+│   └── desktop/                       # PySide6 桌面应用
+│       ├── akvc_app/
+│       │   ├── views/
+│       │   ├── viewmodels/
+│       │   ├── services/
+│       │   ├── workers/
+│       │   ├── i18n/
+│       │   ├── resources/
+│       │   ├── compat_cli.py
+│       │   └── __main__.py
+│       ├── tests/
 │       └── pyproject.toml
 │
 ├── camera-core/                       # 帧路径核心 (Python)

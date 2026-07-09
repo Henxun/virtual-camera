@@ -69,10 +69,10 @@ macOS 安装流程需要完成：
    - `package_install_failed`
    - `install_command_failed`
    - `install_failed`
-7. `MacVirtualCamera` 与统一 `VirtualCamera` 现都可直接读取 `install_extension_result()`，用于保留阶段信息；原有 `install_extension()` 仍保持布尔返回
-8. `apps/cli` 现已提供 macOS `akvc install` / `akvc install --json`，可直接查看安装阶段结果，无需手工拼接 smoke 输出
-9. `apps/cli` 现也已提供 macOS `akvc uninstall` / `akvc uninstall --json`，可直接查看停用与卸载状态回落结果
-10. `MacVirtualCamera` 与统一 `VirtualCamera` 现在都已补充：
+7. `VirtualCamera` 现可直接读取 `install_extension_result()`，用于保留阶段信息；原有 `install_extension()` 仍保持布尔返回
+8. `akvc` 兼容命令面现已提供 macOS `install` / `install --json`，可直接查看安装阶段结果，无需手工拼接 smoke 输出
+9. `akvc` 兼容命令面现也已提供 macOS `uninstall` / `uninstall --json`，可直接查看停用与卸载状态回落结果
+10. `VirtualCamera` 现在已补充：
    - `uninstall_extension_result()`
    - `uninstall_extension()`
    用于把“停止推流 -> 停用扩展 -> 轮询状态回落”收口为统一 Python 能力
@@ -107,7 +107,7 @@ macOS 安装流程需要完成：
    - `installed_visible`
    - `timeout_waiting_for_device`
    便于 CLI、报告与桌面端统一判断“扩展已启用但系统摄像头还未枚举完成”的状态
-18. `VirtualCamera` / `MacVirtualCamera` 当前已调整为惰性加载视频依赖；在还未进入 `push_frame()` 推帧路径前，`status / install / enumerate_devices` 等安装侧能力不再强制依赖 `numpy` / `cv2`
+18. `VirtualCamera` 当前已调整为惰性加载视频依赖；在还未进入 `push_frame()` 推帧路径前，`status / install / enumerate_devices` 等安装侧能力不再强制依赖 `numpy` / `cv2`
 19. 当前六个目标应用 `Zoom / Teams / Google Meet / OBS / QuickTime / FaceTime` 的检查矩阵，已通过 `tools/macos_app_matrix_contract.py` 固定为统一集合，避免安装页、`smoke`、报告模板之间出现覆盖漂移
 20. `python3 tools/macos_smoke.py` 与 `python3 tools/macos_smoke.py --run-install` 当前也会输出同一份 `verification_targets`
 21. 这样桌面端、CLI 与 smoke 验证工具现在已经共享同一套目标应用验证清单，不需要分别维护多份指引
@@ -127,10 +127,10 @@ macOS 安装流程需要完成：
 24. 如果当前机器缺少 `numpy` / `cv2`，即使已经进入 `installed_visible`，桌面端也会继续保持 `Start` 禁用，并把禁用原因切换为“推流依赖缺失”
 25. 当前这条依赖门禁在桌面端空闲轮询期间还会自动重新探测；如果用户补装了 `numpy / cv2`，且扩展状态已满足 `installed_visible`，`Start` 会自动恢复可用
 26. 如果用户已经点过一次 `Start` 并触发了 worker 级依赖失败，当前也可以在补装依赖后点击 `Recheck` 主动恢复这条状态，不必强制重启应用
-27. 直接使用 Python SDK 的 macOS 调用方现在也会走同一条启动门禁：`MacVirtualCamera.start()` / `VirtualCamera.start()` 会在真正打开 sink 前校验“已安装、已批准、设备已可见”，如果不满足会直接抛出明确异常，而不会进入“看起来 started=True、但系统其实没有可用摄像头”的假启动状态
-28. SDK 调用方当前还可直接读取：
-   - `VirtualCamera.readiness()` / `MacVirtualCamera.readiness()`
-   - `VirtualCamera.inspect_installation()` / `MacVirtualCamera.inspect_installation()`
+27. 直接使用 Python 兼容层的 macOS 调用方现在也会走同一条启动门禁：`VirtualCamera.start()` 会在真正打开 sink 前校验“已安装、已批准、设备已可见”，如果不满足会直接抛出明确异常，而不会进入“看起来 started=True、但系统其实没有可用摄像头”的假启动状态
+28. 兼容层调用方当前还可直接读取：
+   - `VirtualCamera.readiness()`
+   - `VirtualCamera.inspect_installation()`
    这样 PySide6、CLI 或外部自动化可以在真正 `start()` 之前，直接拿到统一的 `status + devices + blocker_code + verification_targets` 快照
 29. 当前 `tools/macos_smoke.py`、`tools/macos_install_session.py`、`tools/macos_validation_report.py` 与 `tools/macos_validation_session.py` 已支持同一组运行时覆盖参数：
    - `--host-bundle`

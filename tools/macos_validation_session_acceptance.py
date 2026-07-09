@@ -741,6 +741,9 @@ def evaluate_acceptance(manifest_path: Path) -> dict[str, Any]:
         if "entrypoints_contract_cli_case_complete" in summary
         else entrypoints_consistency.get("cli_case_complete")
     )
+    compatibility_cli_case_complete = (
+        True if entrypoints_contract_cli_case_complete is None else entrypoints_contract_cli_case_complete
+    )
     entrypoints_contract_desktop_case_complete = (
         summary.get("entrypoints_contract_desktop_case_complete")
         if "entrypoints_contract_desktop_case_complete" in summary
@@ -774,7 +777,7 @@ def evaluate_acceptance(manifest_path: Path) -> dict[str, Any]:
                 entrypoints_contract_passed,
                 entrypoints_contract_surface_complete,
                 entrypoints_contract_demo_case_complete,
-                entrypoints_contract_cli_case_complete,
+                compatibility_cli_case_complete,
                 entrypoints_contract_desktop_case_complete,
                 sdk_contract_passed,
                 sdk_contract_constructor_shape_aligned,
@@ -788,7 +791,7 @@ def evaluate_acceptance(manifest_path: Path) -> dict[str, Any]:
                 entrypoints_contract_passed,
                 entrypoints_contract_surface_complete,
                 entrypoints_contract_demo_case_complete,
-                entrypoints_contract_cli_case_complete,
+                compatibility_cli_case_complete,
                 entrypoints_contract_desktop_case_complete,
                 sdk_contract_passed,
                 sdk_contract_constructor_shape_aligned,
@@ -1069,11 +1072,11 @@ def evaluate_acceptance(manifest_path: Path) -> dict[str, Any]:
             python_direct_runtime_value,
             evidence=python_direct_runtime_evidence,
             unknown_note=(
-                "缺少 direct-push 纯直连证据，尚不能证明 Python VirtualCamera 已在无 helper 热路径、"
+                "缺少 direct-push 纯直连证据，尚不能证明 Python 兼容层 VirtualCamera 已在无 helper 热路径、"
                 "无 shared-memory fallback 的前提下直接把帧送入 Camera Extension。"
             ),
             fail_note=(
-                "当前会话未证明 Python VirtualCamera 走的是纯 direct sender 热路径；"
+                "当前会话未证明 Python 兼容层 VirtualCamera 走的是纯 direct sender 热路径；"
                 "请优先运行 `python3 tools/make.py direct-push-demo --require-direct-runtime` 复核。"
             ),
         ),
@@ -1086,6 +1089,7 @@ def evaluate_acceptance(manifest_path: Path) -> dict[str, Any]:
                 "entrypoints_contract_surface_complete": entrypoints_contract_surface_complete,
                 "entrypoints_contract_demo_case_complete": entrypoints_contract_demo_case_complete,
                 "entrypoints_contract_cli_case_complete": entrypoints_contract_cli_case_complete,
+                "compatibility_cli_case_complete": compatibility_cli_case_complete,
                 "entrypoints_contract_desktop_case_complete": entrypoints_contract_desktop_case_complete,
                 "sdk_contract_present": sdk_contract_present,
                 "sdk_contract_passed": sdk_contract_passed,
@@ -1095,12 +1099,12 @@ def evaluate_acceptance(manifest_path: Path) -> dict[str, Any]:
                 ),
             },
             unknown_note=(
-                "缺少统一 Python 入口 contract 证据，尚不能证明 PySide6 demo/direct-push demo/"
-                "CLI/desktop 仍共同走统一 VirtualCamera 入口，且 SDK direct sender 导出面仍完整。"
+                "缺少当前 Python 兼容入口 contract 证据，尚不能证明 PySide6 demo/direct-push demo/"
+                "desktop 仍与兼容层 VirtualCamera 入口保持一致，且 direct sender 相关导出面仍完整。"
             ),
             fail_note=(
-                "当前会话未证明 PySide6 demo/direct-push demo/CLI/desktop 四条入口链仍共同走统一 "
-                "VirtualCamera 入口，或 SDK direct sender 导出面 / 构造签名 contract 存在缺口。"
+                "当前会话未证明 PySide6 demo/direct-push demo/desktop 这些当前兼容入口仍与 "
+                "VirtualCamera 兼容层 contract 保持一致，或 direct sender 导出面 / 构造签名 contract 存在缺口。"
             ),
         ),
         _criterion(

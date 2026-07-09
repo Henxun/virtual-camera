@@ -115,7 +115,7 @@ def check_registration() -> bool:
             print("  [FAIL] DLL file missing — run: uv run tools/make.py build")
             return False
     except FileNotFoundError:
-        print("  [FAIL] CLSID not registered — run (admin): uv run python -m akvc_cli register")
+        print("  [FAIL] CLSID not registered — run (admin): uv run python tools/make.py register")
         return False
 
     cat = "{860BB310-5D01-11d0-BD3B-00A0C911CE86}"

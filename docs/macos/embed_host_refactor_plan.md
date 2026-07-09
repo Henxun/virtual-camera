@@ -15,7 +15,7 @@
 - 不再要求最终产品额外安装一个独立 `akvc-host.app`
 - 由你的主程序 `.app` 自身充当 Camera Extension 的 container app
 - Python 推帧热路径保持不变，仍然走：
-  - `PySide6/Python -> MacVirtualCamera -> direct sender / shared memory -> Camera Extension`
+  - `PySide6/Python -> VirtualCamera -> direct sender / shared memory -> Camera Extension`
 - Windows / Linux 对外接口不受影响
 
 ## 结论
@@ -295,7 +295,7 @@ TDD：
 
 任务：
 
-1. `VirtualCamera` / `MacVirtualCamera` 构造参数增加：
+1. `VirtualCamera` 兼容层构造参数增加：
    - `app_bundle`
    - `app_executable`
 2. 兼容映射：

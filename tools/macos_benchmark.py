@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """macOS virtual camera producer benchmark helper.
 
-This tool focuses on the Python -> SDK -> frame-sink producer path so we can
+This tool focuses on the Python compatibility -> frame-sink producer path so we can
 track a stable baseline before full end-to-end application lab validation is
 available. It emits structured JSON that can be compared across machines,
-architectures, and future IPC implementations.
+architectures, and future IPC implementations without treating Python as the
+primary architecture.
 """
 
 from __future__ import annotations

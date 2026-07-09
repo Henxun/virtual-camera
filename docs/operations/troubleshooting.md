@@ -12,7 +12,7 @@
 - Symptom: native build completes, then the `--python` editable-install phase fails because `.venv\Scripts\python.exe` cannot import `pip`.
 - Root cause: the project virtualenv was missing `pip`, so `tools/make.py` could not perform its post-build editable installs.
 - Fix: bootstrap `pip` in the existing virtualenv with `python -m ensurepip --upgrade`, then rerun `tools/make.py build --python`.
-- Verification: build log `.akvc/logs/build/20260622T060737-attempt-02.log` shows successful native outputs plus editable installs for `camera-core`, `apps/desktop`, and `apps/cli`.
+- Verification: build log `.akvc/logs/build/20260622T060737-attempt-02.log` shows successful native outputs plus editable installs for `camera-core` and `apps/desktop` (which now also carries the `akvc` compatibility command surface).
 
 ## 2026-06-22 — `akvc doctor` reports filter not registered
 

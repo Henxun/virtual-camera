@@ -33,7 +33,7 @@
 
 仓库中已经存在一些应当保留的跨平台抽象：
 
-- Python SDK 入口：[camera-core/src/akvc/sdk/virtual_camera.py](/Users/admir/workspace/virtual-camera/camera-core/src/akvc/sdk/virtual_camera.py)
+- Python 兼容层入口：[camera-core/src/akvc/sdk/virtual_camera.py](/Users/admir/workspace/virtual-camera/camera-core/src/akvc/sdk/virtual_camera.py)
 - 平台 Sink 工厂：[camera-core/src/akvc/core/frame_sink/__init__.py](/Users/admir/workspace/virtual-camera/camera-core/src/akvc/core/frame_sink/__init__.py)
 - 现有 macOS POSIX 共享内存生产者原型：[camera-core/src/akvc/core/frame_sink/macos_shm.py](/Users/admir/workspace/virtual-camera/camera-core/src/akvc/core/frame_sink/macos_shm.py)
 - 桌面层服务门面已经预留了 macOS 路径：[apps/desktop/akvc_app/services/facade.py](/Users/admir/workspace/virtual-camera/apps/desktop/akvc_app/services/facade.py)
@@ -559,12 +559,12 @@ macOS Python 侧建议**优先复用或对齐现有 Windows 对外类**：
   - `started`
   - `consumer_count`
 
-因此，macOS 更推荐的目标不是新增一个完全独立的“类风格”，而是让 darwin 平台尽量落入同一套 SDK 入口；如果阶段性需要平台专用类，也应保持与现有 Windows SDK 语义一致。
+因此，macOS 更推荐的目标不是新增一个完全独立的“类风格”，而是让 darwin 平台尽量落入同一套 `VirtualCamera` 兼容入口；如果阶段性需要平台专用实验接口，也应保持与现有 Windows 语义一致。
 
-阶段性平台类可以设计为：
+阶段性平台接口可以设计为：
 
 ```python
-class MacVirtualCamera:
+class VirtualCamera:
     def __init__(self, *, width=1280, height=720, fps=30.0, helper_exe=None, pipeline=None): ...
     @property
     def started(self): ...

@@ -14,7 +14,7 @@
 
 统一的应该是：
 
-- Python SDK 接口
+- Python 兼容层接口
 - 生命周期
 - 错误模型
 - 安装检查模型
@@ -30,17 +30,17 @@
 
 - Windows 保留 `MF virtual camera + helper`
 - macOS 保留 `container app + Camera Extension`
-- 你的 PySide6 业务层只依赖同一套 `VirtualCamera` facade
+- 你的 PySide6 业务层只依赖同一套 Python 兼容层 `VirtualCamera` 封装
 
 ## 统一架构图
 
 ```mermaid
 flowchart LR
-    A["PySide6 主程序"] --> B["akvc.sdk.VirtualCamera"]
+    A["PySide6 主程序"] --> B["akvc.sdk.VirtualCamera\n(兼容封装)"]
     B --> C{"平台分发"}
 
-    C --> D["WindowsBackend"]
-    C --> E["MacVirtualCamera"]
+    C --> D["Windows backend"]
+    C --> E["camera-core macOS session\n+ native Camera Extension runtime"]
 
     D --> D1["HelperService"]
     D1 --> D2["MF Virtual Camera"]
@@ -72,7 +72,7 @@ flowchart LR
 - macOS 是否用了 Camera Extension
 - host/container app 的二进制路径
 
-### 2. SDK facade 层
+### 2. Python 兼容封装层
 
 由 `akvc.sdk.VirtualCamera` 负责：
 
@@ -131,9 +131,10 @@ vc.stop()
 
 平台差异应落在：
 
-- `MacInstallerService`
-- `MacVirtualCamera`
+- container app 控制面
+- camera-core macOS session / native control layer
 - `Camera Extension`
+- direct sender / shared memory
 - container app 发现与激活逻辑
 
 ## 为什么 macOS 不应继续暴露独立 host 概念
@@ -208,5 +209,5 @@ stop()/close()
 
 1. 先把 macOS 的 `host_*` 语义下沉成 `container app` 语义
 2. 再让你的主程序 `.app` 接管 container 角色
-3. 保持 `VirtualCamera` facade 不变
+3. 保持 `VirtualCamera` 兼容封装不变
 4. 最后统一桌面端安装提示与错误提示

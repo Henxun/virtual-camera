@@ -20,7 +20,7 @@
 2. 确认不使用 Swift
 3. 确认 Python 接口优先对齐 Windows `VirtualCamera`
 
-### Phase M1：Python SDK 对齐测试
+### Phase M1：Python 兼容层对齐测试
 
 先写测试：
 
@@ -32,17 +32,17 @@
 再实现：
 
 1. 抽象 macOS 平台类
-2. 接入统一 SDK 入口
+2. 接入 `VirtualCamera` 兼容入口
 3. 不改变 Windows 测试结果
 
 ### 当前进展补充
 
-15. 已继续把统一 Python 入口的构造语义向 Windows 侧对齐：
-    - `MacVirtualCamera.__init__` 当前已正式接受 `helper_exe=None`
+15. 已继续把统一 Python 兼容入口的构造语义向 Windows 侧对齐：
+    - `VirtualCamera` 的 macOS 路径当前已正式接受 `helper_exe=None`
     - 当外部传入 `.app` 路径时，会映射为 `DefaultMacInstallerService(host_bundle=...)`
     - 当外部传入原生可执行文件路径时，会映射为 `DefaultMacInstallerService(host_executable=...)`
-    - `VirtualCamera` 的 darwin 分支当前也会把 `helper_exe` 原样透传给 `MacVirtualCamera`
-    - 已补充 SDK contract 与定向单测，防止后续再次出现“文档写着统一入口，但 macOS 实现并未真正接受同名参数”的漂移
+    - `VirtualCamera` 的 darwin 分支当前会继续把 `helper_exe` 透传给对应 macOS backend
+    - 已补充兼容层 contract 与定向单测，防止后续再次出现“文档写着统一入口，但 macOS 实现并未真正接受同名参数”的漂移
 16. 本轮继续把“指定构建产物做真机验收”的工具链参数透传补齐：
     - `tools/macos_smoke.py` 当前已从 `CommandMacInstallerService` 切到 `DefaultMacInstallerService`
     - `tools/macos_validation_report.py` 当前也改为走 `DefaultMacInstallerService`，`run-install` 路径会复用同一套 host/pkg 覆盖逻辑
@@ -85,11 +85,11 @@
     - `tools/macos_validation_session_acceptance_contract.py` 当前已固定 “runtime/release product identity mismatch -> release_packaging_ready=fail” 的代表性回放 case
     - 已补齐三条 contract tool 定向单测，确认这条人工验收门禁不只存在于 helper 实现里，也被 contract 与总验证入口共同保护
 20. 本轮继续把 `start(name=...)` 从“接口存在”推进到“原生可见配置链”：
-    - Python `MacVirtualCamera.start(name=...)` 当前会先把目标摄像头名称持久化到默认 App Group 共享文件
+    - Python `VirtualCamera.start(name=...)` 当前会先把目标摄像头名称持久化到默认 App Group 共享文件
     - `virtualcam/macos/ipc` 当前已新增设备名 override 解析能力，原生侧会按 `AKVC_DEVICE_NAME / AKVC_DEVICE_NAME_FILE` 或共享文件回退解析
     - Camera Extension `AKVCProviderSource` 当前会用该配置作为 Provider / Device 的默认可见名称
     - 原生 `AKVCDevicePrefix()`、`status` 与 `list-devices` 当前也会读取同一份设备名配置，避免 Python 侧请求名、系统枚举前缀和 Camera Extension 默认名继续分叉
-    - 已补充 `macos_ipc`、`MacVirtualCamera`、native skeleton 与 topology contract 回归，并继续通过 `python3.12 tools/macos_topology_contract.py` 与 `python3.12 tools/macos_native_verify.py`
+    - 已补充 `macos_ipc`、`VirtualCamera` 兼容层、native skeleton 与 topology contract 回归，并继续通过 `python3.12 tools/macos_topology_contract.py` 与 `python3.12 tools/macos_native_verify.py`
 21. 本轮继续把“人工验收看到的设备名”收口到同一条配置链：
     - `build_verification_targets(...)` 当前已支持 `device_prefix`
     - Zoom / Teams / Google Meet / OBS / QuickTime / FaceTime 六个目标应用的步骤、检查项与 ready 状态文案，都会优先使用当前运行时 `device_prefix`
@@ -186,7 +186,7 @@
       - `tests/unit/test_macos_native_skeleton.py tests/unit/test_macos_ipc.py tests/unit/test_macos_framebus_contract_tool.py` -> `34 passed, 2 skipped`
       - `xcodebuild -scheme akvc-demo-app -configuration Release CODE_SIGNING_ALLOWED=NO build` -> `BUILD SUCCEEDED`
 31. 本轮继续把 Python/macOS 运行态证据从“工具侧零散拼装”推进到“SDK 统一快照”：
-    - `MacVirtualCamera` 当前已新增 `runtime_snapshot()`
+    - `VirtualCamera` 兼容层当前已新增 `runtime_snapshot()`
     - 该快照当前收敛：
       - `started / camera_name / width / height / fps`
       - `backend_name / using_direct_sender / shared_memory_fallback_used`
@@ -386,7 +386,7 @@
 
 ## 3. 当前建议的首轮实现顺序
 
-1. 统一 SDK 测试和接口契约
+1. `VirtualCamera` 兼容层测试和接口契约
 2. Shared Memory Ring 最小实现
 3. Camera Extension 空设备闭环
 4. 独立原生 Demo App 验收控制台
@@ -425,12 +425,12 @@
 12. `macos_validation_session.py` 当前已覆盖 `numpy-direct / provider / latest-provider / image / pixmap / widget / screen / video-file` 八类 Python/PySide6 推流入口，其中 `video-file` 用于本地视频播放转推验收
 13. `akvc.integrations.pyside6` 当前已补充 `LatestFrameProvider`，开始为 WebRTC / AI Avatar / 异步推理线程建立“最新帧提交 -> Qt 定时推流”的桥接基线
 14. `tools/pyside6_virtual_camera_demo.py` 与 `macos_validation_session.py` 当前已补充 `latest-provider` 模式，开始为“异步提交最新帧”路径提供可运行示例与验证工件
-15. 已继续把统一 Python 入口的构造语义向 Windows 侧对齐：
-    - `MacVirtualCamera.__init__` 当前已正式接受 `helper_exe=None`
+15. 已继续把统一 Python 兼容入口的构造语义向 Windows 侧对齐：
+    - `VirtualCamera` 的 macOS 路径当前已正式接受 `helper_exe=None`
     - 当外部传入 `.app` 路径时，会映射为 `DefaultMacInstallerService(host_bundle=...)`
     - 当外部传入原生可执行文件路径时，会映射为 `DefaultMacInstallerService(host_executable=...)`
-    - `VirtualCamera` 的 darwin 分支当前也会把 `helper_exe` 原样透传给 `MacVirtualCamera`
-    - 已补充 SDK contract 与定向单测，防止后续再次出现“文档写着统一入口，但 macOS 实现并未真正接受同名参数”的漂移
+    - `VirtualCamera` 的 darwin 分支当前会继续把 `helper_exe` 透传给对应 macOS backend
+    - 已补充兼容层 contract 与定向单测，防止后续再次出现“文档写着统一入口，但 macOS 实现并未真正接受同名参数”的漂移
 15. `tools/pyside6_virtual_camera_demo.py -> tools/macos_validation_report.py -> tools/macos_validation_session.py` 当前还已继续打通 `video-file / latest-provider / widget / screen` 的会话级证据回传：
     - `validation_demo_mode`
     - `validation_demo_mode_supported`
@@ -447,8 +447,8 @@
     - 同时还会校验 `docs/benchmark/macos_virtual_camera_benchmark.md` 中的 profile 矩阵与 `tools/macos_benchmark.py` 保持一致，避免文档与工具在 `4K30 / 4K60` 命名或覆盖集合上漂移
 20. 已补充 `macos_framebus_contract.py`，开始自动校验共享协议头、POSIX consumer 与 Python producer 的 Frame Bus ABI 契约是否一致
 21. 已补充 `macos_stream_contract.py`，开始自动校验 Camera Extension 流语义，包括占位帧回退、超时/断裂丢帧、属性面和定时推流契约
-22. 已补充 `macos_sdk_contract.py`，开始自动校验 `VirtualCamera` 与 `MacVirtualCamera` 的公开方法、属性、签名和上下文管理语义是否仍与现有 Windows SDK 形态对齐
-23. `VirtualCamera` / `MacVirtualCamera` 当前还已显式上浮：
+22. 已补充 `macos_sdk_contract.py`，开始自动校验 `VirtualCamera` 兼容层的公开方法、属性、签名和上下文管理语义是否仍与现有 Windows SDK 形态对齐
+23. `VirtualCamera` 当前还已显式上浮：
     - `readiness()`
     - `inspect_installation()`
     开始把 `status + devices + blocker_code + verification_targets` 收敛成 SDK 级统一快照，供 PySide6 / CLI / 自动化在真正 `start()` 前直接消费
@@ -464,9 +464,9 @@
     - 会话 manifest 的 `artifacts / steps / summary` 当前都会继续登记这份工件，并额外汇总 `present / passed / device_prefix / filtered_device_count / total_device_count / override_no_match_ok`
 29. 已补充 `camera-core/src/akvc/platforms/macos/ipc.py`，开始把 macOS IPC 元数据收敛成 typed surface：
     - 当前导出 `MacFrameBusLayout / MacIPCDescriptor / MacStreamCapabilities`
-    - `MacVirtualCamera` 与 SDK `VirtualCamera` 当前都已补充 `ipc_descriptor()` 与 `stream_capabilities()`
+    - `VirtualCamera` 当前已补充 `ipc_descriptor()` 与 `stream_capabilities()`
     - Desktop `ServiceFacade` 当前也会优先消费 `stream_capabilities()`，并把 `supported_formats / supported_frame_rates` 继续透传给 ViewModel 与主窗口状态栏
-30. `VirtualCamera` 与 `MacVirtualCamera` 当前还已直接上浮 PySide6 友好入口：
+30. `VirtualCamera` 当前还已直接上浮 PySide6 友好入口：
     - `create_pyside6_bridge()`
     - `send_image() / send_pixmap() / send_widget() / send_screen()`
     - `create_latest_frame_provider() / create_pyside6_streamer()`
@@ -483,7 +483,7 @@
     - `demo_sdk_streamer_factory_used`
     - `demo_sdk_latest_provider_factory_used`
     - `demo_sdk_direct_push_used`
-    后续在 CI 工件页或人工验收时，不必再反推代码路径，就能直接确认本次会话是否真的走了统一 SDK 入口
+    后续在 CI 工件页或人工验收时，不必再反推代码路径，就能直接确认本次会话是否真的走了 `VirtualCamera` 兼容入口
 33. 当前主要风险仍在真实系统验证层面，包括：
    - 已跑通无签名 `xcodebuild` 真机构建链路，但“签名 + 公证 + 系统安装批准”仍未完成
    - Zoom / Teams / Meet / OBS / QuickTime / FaceTime 仍缺少真实应用枚举验证
@@ -512,7 +512,7 @@
     - 当前仍属于轮询式重连，不是显式 XPC 控制面；后续仍可继续收敛成可观察、可命令化的重载流程
 34. 当前已继续补上一条可命令化的原生 IPC 同步链路：
     - 新增 `akvc-macos-sync-ipc`
-    - Python `MacVirtualCamera.start()` 在写入共享文件后，会优先调用 installer service 的 `sync_ipc_configuration_result(...)`
+    - Python `VirtualCamera.start()` 在写入共享文件后，会优先调用 installer service 的 `sync_ipc_configuration_result(...)`
     - 若原生命令存在，则会把 `AKVC_MACOS_SHM_NAME` 显式传给该命令，由原生层完成同一套校验与持久化
     - 这样当前 SDK / CLI / Desktop 后续都可以复用同一条“显式同步 IPC 配置”的控制面入口
     - 已实际生成无签名 `VirtualCamera.pkg` 与 `VirtualCamera.zip`
@@ -571,9 +571,9 @@
 40. 本轮继续把依赖门禁并入同一条状态链：
     - `ServiceFacade` 当前会用 `find_spec("numpy") / find_spec("cv2")` 预探测推流依赖，而不主动导入这些模块
 41. 本轮继续把显式 IPC 同步能力上浮到统一 Python/CLI 入口：
-    - `MacVirtualCamera.start()` 当前已改为先检查“安装/批准/设备可见”，再执行 `sync_ipc_configuration_result(...)`，最后才对 `ipc_not_ready` 做最终阻断
+    - `VirtualCamera.start()` 当前已改为先检查“安装/批准/设备可见”，再执行 `sync_ipc_configuration_result(...)`，最后才对 `ipc_not_ready` 做最终阻断
     - 这样当问题本身就是“共享内存配置尚未同步”时，不会在真正尝试同步前被过早拒绝
-    - `MacVirtualCamera` 与 SDK `VirtualCamera` 当前都已显式补充：
+    - `VirtualCamera` 当前已显式补充：
       - `sync_ipc_configuration_result(shared_memory_name=None)`
       - `sync_ipc_configuration(shared_memory_name=None)`
     - CLI 当前也已补充 `akvc sync-ipc --json [--shared-memory-name ...]`
@@ -619,10 +619,10 @@
       - `tools/macos_release_diagnostics.py` 与 `tools/macos_validation_report.py` 是否仍导出 `app_signed / extension_signed / pkg_signed` 及 `release_*` 汇总字段
     - `tools/macos_native_verify.py` 当前也已接入这条检查，开始把“shell 脚本存在”进一步收紧到“签名语义未漂移”
     - 这样签名、公证、封口与最终 JSON 验收证据之间现在形成了可回归的闭环，不再只依赖人工翻 shell 日志
-47. 本轮继续收紧 Python SDK 对齐语义：
+47. 本轮继续收紧 Python 兼容层对齐语义：
     - `tools/macos_sdk_contract.py` 当前已把 `ipc_descriptor()` 与 `stream_capabilities()` 一并纳入共享公开方法集合
     - 同时新增了 `enumerate_devices / status / readiness / inspect_installation / ipc_descriptor / stream_capabilities / is_installed / install_extension_result / install_extension` 的签名级断言
-    - `tests/unit/test_macos_install_result_api.py` 当前也补充了非 macOS 路径下这些方法的降级返回值约束，避免后续平台分支重构时把统一 SDK 表面撞歪
+    - `tests/unit/test_macos_install_result_api.py` 当前也补充了非 macOS 路径下这些方法的降级返回值约束，避免后续平台分支重构时把 `VirtualCamera` 兼容表面撞歪
     - 这样“对齐当前 Windows SDK，而不是对齐 pyvirtualcam”的要求现在不只体现在文档里，也体现在可执行契约里
 48. 本轮继续把入口层真实调用链提升成独立 contract：
     - 已新增 `tools/macos_entrypoints_contract.py`
@@ -630,7 +630,7 @@
       - `tools/pyside6_virtual_camera_demo.py` 仍通过统一 `VirtualCamera` 创建相机，并保持 `start(name) -> streamer -> close()` 调用链
       - CLI `status/install/sync-ipc` 仍通过统一 `VirtualCamera` 暴露 `inspect_installation / install_extension_result / sync_ipc_configuration_result`
       - 桌面端 `ServiceFacade` 仍优先消费 `inspect_installation()` 与 `stream_capabilities()`
-      - 上述四条入口链都不回退到 `MacVirtualCamera` 直接耦合，也不重新引入 `pyvirtualcam` 依赖
+      - 上述四条入口链都不回退到 macOS 私有包装类型直接耦合，也不重新引入 `pyvirtualcam` 依赖
     - `tools/macos_native_verify.py`、GitHub Actions、Jenkins 与单测白名单当前也已接入这条检查，避免“底层 SDK 没漂移，但入口层各自分叉”
     - `stream_start_ready` 现在由“安装是否完成”与“推流依赖是否齐全”共同决定
     - 如果扩展已安装完成但 `numpy / cv2` 缺失，桌面端仍会保持 `Start` 禁用，并优先提示“推流依赖缺失”
@@ -640,7 +640,7 @@
     - 如果之前只是 `find_spec` 级别的 `numpy / cv2` 缺失，补装依赖后无需重启应用，`Start` 可自动恢复
     - 对于已经发生过的 worker 运行时导入失败，当前可通过补装依赖后点击 `Recheck` 主动恢复，而不会强制要求重启应用
 42. 本轮继续把同一条门禁下沉到 SDK：
-    - `MacVirtualCamera.start()` 当前会在真正打开 sink 前校验扩展是否已安装、是否仍待系统批准、以及系统设备列表里是否已出现虚拟摄像头
+    - `VirtualCamera.start()` 当前会在真正打开 sink 前校验扩展是否已安装、是否仍待系统批准、以及系统设备列表里是否已出现虚拟摄像头
     - 统一 `VirtualCamera` 的 darwin 分支也会继承这条行为，外部 PySide6 项目直接调用时不再出现“started=True 但系统实际上没有可用虚拟摄像头”的假启动
     - 已补充 `test_macos_virtual_camera.py` 覆盖未安装、待批准、设备未可见三类禁止启动场景
 43. 本轮继续推进 IPC baseline 的可测性：
@@ -659,8 +659,8 @@
 46. 本轮继续把 IPC 探测结果接回运行态状态链路：
     - `akvc.runtime` 当前已支持解析 `AKVC_MACOS_FRAMEBUS_ROUNDTRIP_JSON` 与默认 `build/macos/.../framebus-roundtrip.json`
     - `ExtensionStatus` 当前已新增 `ipc_probe_present / ipc_ready / ipc_environment_blocked / ipc_last_error / ipc_probe_path / ipc_direct_open_errno`
-    - `akvc status`、`akvc install`、桌面端 `ServiceFacade` 与 `MacVirtualCamera.start()` 现在都会共同消费这组 IPC 状态
-    - 如果系统摄像头已可见，但最新 framebus roundtrip 明确显示当前环境阻塞了共享内存访问，桌面端与 Python SDK 现在会在启动前直接给出一致的阻塞原因，而不是等到后续推流失败
+    - `akvc status`、`akvc install`、桌面端 `ServiceFacade` 与 `VirtualCamera.start()` 现在都会共同消费这组 IPC 状态
+    - 如果系统摄像头已可见，但最新 framebus roundtrip 明确显示当前环境阻塞了共享内存访问，桌面端与 Python 兼容层现在会在启动前直接给出一致的阻塞原因，而不是等到后续推流失败
 47. 本轮继续把 IPC 结果前推到桌面可见层：
     - `MainViewModel` 当前已开始透传 `ipc_transport / ipc_probe_present / ipc_ready / ipc_environment_blocked / ipc_probe_path / ipc_direct_open_errno`
     - 主窗口当前会把安装摘要显示成 `IPC: ready / pending / blocked/errno=...`
@@ -804,8 +804,8 @@
     - 已同步补充 artifact-check / session-contract / summary-render / report/session 单测，固定 “install-session -> smoke -> validation install -> validation status” 的 IPC 身份回退顺序
 65. 本轮继续把 shm 名称从 typed IPC surface 打通到真实运行时：
     - Python `MacOsShmSink` 当前已支持按构造参数使用自定义 `shared_memory_name`
-    - `MacVirtualCamera.start()` 当前会优先把 `ipc_descriptor().framebus.shared_memory_name` 传给 sink，而不是始终退回默认 `/akvc-frames-v1`
-    - 当 `MacVirtualCamera` 已经 `start()` 后，再次调用 `sync_ipc_configuration_result("/new-shm")`，当前也会在 sync 成功后把 producer sink 重绑到新的 shm 名称
+    - `VirtualCamera.start()` 当前会优先把 `ipc_descriptor().framebus.shared_memory_name` 传给 sink，而不是始终退回默认 `/akvc-frames-v1`
+    - 当 `VirtualCamera` 已经 `start()` 后，再次调用 `sync_ipc_configuration_result("/new-shm")`，当前也会在 sync 成功后把 producer sink 重绑到新的 shm 名称
     - 原生 `framebus_posix.c` 当前已新增 `akvc_fb_open_named(...)`，`AKVCFrameProvider` 也会使用自身 `sharedMemoryName` 打开 shm
     - `framebus_consumer_probe.c` 当前也已支持 `--shm-name`，为后续补齐“非默认 shm 名称 roundtrip 验证”预留了直接入口
 66. 本轮继续把 shm 名称配置源前推到原生 descriptor 默认层：
@@ -821,7 +821,7 @@
       - `write_shared_memory_name_override()`
     - 默认配置文件路径当前为：
       `~/Library/Group Containers/group.com.akvc.shared/akvc-macos-shm-name.txt`
-    - `MacVirtualCamera.start()` 当前会在创建 sink 前把最终 `shared_memory_name` 写入这份共享文件
+    - `VirtualCamera.start()` 当前会在创建 sink 前把最终 `shared_memory_name` 写入这份共享文件
     - `virtualcam/macos/ipc/src/macos_ipc.cpp` 当前会在读取 `AKVC_MACOS_SHM_NAME` 失败后，继续尝试：
       - `AKVC_MACOS_SHM_NAME_FILE`
       - App Group 默认配置文件
@@ -903,7 +903,7 @@
     - 会校验每个条目的 `checks / steps` 是否都是非空字符串列表
     - 已补充 artifact-check 定向回归，覆盖“完整模板通过”和“退化模板失败”两类场景
 75. 本轮继续把 Python Producer 与 native `sync-ipc` 的共享内存命名收敛做实：
-    - 当 native `sync_ipc_configuration_result(...)` 返回的 `shared_memory_name` 与请求值不同，`MacVirtualCamera.start()` 当前会改用“最终生效值”打开 producer sink
+    - 当 native `sync_ipc_configuration_result(...)` 返回的 `shared_memory_name` 与请求值不同，`VirtualCamera.start()` 当前会改用“最终生效值”打开 producer sink
     - 同时也会把 `AKVC_MACOS_SHM_NAME_FILE` 对应的 override 文件更新为 native 最终返回值，避免后续 host / extension / producer 三侧对同一会话使用不同 shm 名称
     - 已补充 `test_macos_virtual_camera_start_uses_native_synced_shared_memory_name` 与 `test_macos_virtual_camera_sync_ipc_configuration_persists_native_synced_name` 两条定向回归
 76. 本轮继续把原生 install tool 从“固定 pending 占位返回”推进到“短轮询真实状态快照”：
@@ -961,15 +961,15 @@
     - `camera-core/src/akvc/platforms/macos/installer.py` 当前已新增 `macos_install_settings_commands()` 与 `open_macos_install_settings()`
     - 打开顺序现在会优先尝试更接近 `隐私与安全性` 的 deep link，再回退到普通 `System Settings.app`
     - `apps/desktop/akvc_app/services/facade.py` 当前已改为复用这条统一 helper，而不是各处散落的 `open` 命令
-    - `apps/cli` 当前已新增 `akvc open-settings`
+    - `akvc` 兼容命令面当前已新增 `open-settings`
     - 已通过 installer / CLI / desktop status 三条脚本回放以及 `python3 tools/macos_native_verify.py` 复核
 85. 本轮继续把“卸载/停用”链路收口进统一 Python / CLI surface：
     - `camera-core/src/akvc/platforms/macos/installer.py` 当前已新增 `UninstallExtensionResult`
     - `CommandMacInstallerService / DefaultMacInstallerService` 当前都已补充：
       - `uninstall_extension_result()`
       - `uninstall_extension()`
-    - `MacVirtualCamera` 与统一 `VirtualCamera` 当前也都已补充同名接口，并在卸载前自动停止推流
-    - `apps/cli` 当前已新增 `akvc uninstall` / `akvc uninstall --json`
+    - `VirtualCamera` 当前也已补充同名接口，并在卸载前自动停止推流
+    - `akvc` 兼容命令面当前已新增 `uninstall` / `uninstall --json`
     - 已补充 installer / SDK / CLI 契约回归，并通过 `python3 tools/macos_native_verify.py` 复核
 86. 本轮继续把卸载结果并入验收工件统一语义：
     - `tools/macos_smoke.py` 与 `tools/macos_install_session.py` 当前已改为复用 `uninstall_extension_result()`，不再只记录裸 `returncode`
@@ -1168,7 +1168,7 @@
     - `tools/pyside6_virtual_camera_demo.py` 当前已新增 `image / pixmap` 两种模式，分别直接走 `VirtualCamera.send_image()` 与 `send_pixmap()`
     - `tools/make.py validation-session`、`tools/macos_validation_session.py`、`tools/macos_validation_report.py` 与 `tools/macos_validation_session_acceptance.py` 当前也已同步承认这两种模式
     - `tools/macos_input_contract.py` 与 `tests/unit/test_pyside6_demo_tool.py` 当前已开始固定这两条入口，避免后续只保留 SDK API，但 demo / contract / acceptance 链路静默退化
-    - 这样现在不仅“接口存在”，而且 `QImage/QPixmap -> Python SDK -> shared memory producer -> Camera Extension` 这条纯 Python 直推路径已经进入正式演示与验收语义
+    - 这样现在不仅“接口存在”，而且 `QImage/QPixmap -> Python 兼容层 -> shared memory producer -> Camera Extension` 这条纯 Python 直推路径已经进入正式演示与验收语义
 117. 本轮继续补上最贴近 `/Users/admir/workspace/cameraextension/vcam.mm` 语义的直接推帧模式：
     - `tools/pyside6_virtual_camera_demo.py` 当前已新增 `numpy-direct`，直接执行 `VirtualCamera.push_frame(numpy.ndarray)`
     - 该模式不再强依赖 `PySide6` 或 `QApplication`，而是纯 Python 循环推送 BGR `numpy` 帧
@@ -1182,11 +1182,11 @@
     - `tools/macos_direct_push_demo.py` 当前会直接执行 `VirtualCamera.start() -> push_frame(numpy.ndarray) -> close()`
     - 该脚本不依赖 Qt，也不要求调用方理解 provider/streamer/bridge 层
     - `tools/make.py direct-push-demo` 当前也已接入，便于后续人工试跑、安装后验证和支持文档直接引用
-120. 本轮继续把更贴近 `/Users/admir/workspace/cameraextension/vcam.mm` 的 native direct sender 后端接入 Python SDK：
+120. 本轮继续把更贴近 `/Users/admir/workspace/cameraextension/vcam.mm` 的 native direct sender 后端接入 Python 兼容层：
     - `camera-core/src/akvc/platforms/macos/direct_sender.py` 当前已新增可选的 ctypes 包装层，会查找 `libakvc-macos-direct-sender.dylib`
-    - `MacVirtualCamera.start()` 当前会优先尝试 direct sender；成功时会跳过 `sync-ipc` 与 shared-memory sink，直接走 native sender
+    - `VirtualCamera.start()` 当前会优先尝试 direct sender；成功时会跳过 `sync-ipc` 与 shared-memory sink，直接走 native sender
     - 如果 direct sender 缺失或打开 sink stream 失败，当前会自动回退到既有 `shared memory -> Camera Extension` 路径，避免破坏现有实现
-    - `MacVirtualCamera` 当前默认也会按 direct/shm 后端切换不同 pipeline：direct sender 默认保留 `RGB24/BGR`，shared-memory 路线仍保持 `NV12`
+    - `VirtualCamera` 当前默认也会按 direct/shm 后端切换不同 pipeline：direct sender 默认保留 `RGB24/BGR`，shared-memory 路线仍保持 `NV12`
     - 已补齐定向回放验证：确认 direct sender 成功时不再依赖 IPC probe，失败时会自动回退旧链路
 121. 本轮继续把 macOS 运行时证据从“零散字段”收敛成统一快照：
     - `camera-core/src/akvc/platforms/macos/virtual_camera.py` 与 `camera-core/src/akvc/sdk/virtual_camera.py` 当前已新增 `runtime_snapshot()`，统一输出后端类型、direct sender 状态、共享内存名、最后一帧格式、IPC 描述与 runtime topology
@@ -1197,4 +1197,4 @@
     - `tools/macos_validation_session_artifact_check.py` 当前已同步承认 manual template 中的 `evidence` 字段，不再与 `validation-report` 生成的模板形状冲突
     - `runtime_frame_path` 的默认回退现在固定回到 `shared_memory_ringbuffer -> camera_extension`，不再把安装期 `validation_install_transport` 误写成运行时热路径
     - `artifact_check / acceptance / acceptance_contract` 这类后验校验当前会继续写入 manifest 与 summary，但不会像前置构建失败那样中断整场 session，便于保留完整人工验收证据链
-    - 已通过 `PYTHONPATH=camera-core/src:apps/cli ./.venv/bin/pytest -q tests/unit/test_macos_validation_report_tool.py tests/unit/test_macos_validation_session_tool.py tests/unit/test_macos_validation_session_summary_tool.py` 全链路回归
+    - 已通过 `PYTHONPATH=camera-core/src:apps/desktop ./.venv/bin/pytest -q tests/unit/test_macos_validation_report_tool.py tests/unit/test_macos_validation_session_tool.py tests/unit/test_macos_validation_session_summary_tool.py` 全链路回归

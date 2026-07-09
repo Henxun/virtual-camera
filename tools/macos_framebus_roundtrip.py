@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Cross-language macOS Frame Bus roundtrip validator.
 
-Publishes one NV12 frame with either the raw Python POSIX shared-memory sink
-or the public `VirtualCamera.start()+push_frame()` object path, then
+Publishes one NV12 frame with either the raw Python shared-memory sink or the
+current Python compatibility `VirtualCamera.start()+push_frame()` path, then
 verifies that the native `framebus_posix.c` consumer can read the same frame
 through a small C probe binary.
 """
@@ -25,10 +25,7 @@ sys.path.insert(0, str(ROOT / "camera-core" / "src"))
 from akvc.core.errors import FrameBusError, FrameBusOpenError  # noqa: E402
 from akvc.core.frame import FLAG_DISCONTINUITY, Frame, FourCC  # noqa: E402
 from akvc.core.frame_sink.macos_shm import SHM_NAME, MacOsShmSink  # noqa: E402
-from akvc.platforms.macos.installer import (  # noqa: E402
-    ExtensionInstallState,
-    ExtensionStatus,
-)
+from types import SimpleNamespace  # noqa: E402
 from akvc.sdk.virtual_camera import VirtualCamera  # noqa: E402
 
 
@@ -46,15 +43,15 @@ class _RoundtripInstaller:
         self._shm_name = shm_name
         self._camera_name = camera_name
 
-    def extension_state(self) -> ExtensionInstallState:
-        return ExtensionInstallState.INSTALLED
+    def extension_state(self) -> str:
+        return "installed"
 
     def enumerate_devices(self) -> list[str]:
         return [self._camera_name]
 
-    def status(self) -> ExtensionStatus:
-        return ExtensionStatus(
-            state=ExtensionInstallState.INSTALLED,
+    def status(self):
+        return SimpleNamespace(
+            state="installed",
             devices=[self._camera_name],
             all_devices=[self._camera_name],
             device_prefix=self._camera_name,

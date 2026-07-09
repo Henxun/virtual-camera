@@ -21,7 +21,7 @@
 | `virtualcam/windows/dshow/` | DirectShow Source Filter DLL（CSource + CSourceStream + IAMStreamConfig + 注册表自描述） |
 | `camera-core/` | Frame、FrameProvider（USB / TestPattern）、FramePipeline、FrameSink（写 SHM）、Errors、Metrics、Logging |
 | `apps/desktop/` | PySide6 桌面应用（MVVM 闭环：选源 → 启动 → 实时预览 → 推送到虚拟摄像头） |
-| `apps/cli/` | `akvc` 注册/卸载 CLI |
+| `apps/desktop/akvc_app/compat_cli.py` | `akvc` 兼容命令面（register / unregister / status / doctor） |
 | `tools/make.py` | 跨语言构建编排：CMake → Python build |
 | `tests/unit/` | 帧协议、Pipeline、共享内存读写的单元测试 |
 | `docs/phase2/` | 实施方案、构建指南、运行调试、验证 |
@@ -114,6 +114,7 @@ apps/desktop/
 └── akvc_app/
     ├── __init__.py
     ├── __main__.py                  # 启动入口
+    ├── compat_cli.py                # akvc register / unregister / status / doctor 兼容命令面
     ├── services/
     │   ├── __init__.py
     │   └── facade.py                # ServiceFacade
@@ -126,12 +127,6 @@ apps/desktop/
     └── workers/
         ├── __init__.py
         └── frame_worker.py          # multiprocessing 子进程入口
-
-apps/cli/
-├── pyproject.toml
-└── akvc_cli/
-    ├── __init__.py
-    └── __main__.py                  # akvc register / unregister / status
 ```
 
 ### 2.3 工具与测试

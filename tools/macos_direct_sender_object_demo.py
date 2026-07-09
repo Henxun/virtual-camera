@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Direct macOS sender-object demo mirroring the reference vcam.mm shape.
+"""Direct macOS sender-object demo mirroring the accepted native sender path.
 
-This helper exercises the low-level Python object path directly:
+This helper exercises the low-level Python compatibility object path directly:
 
     MacDirectCameraSender.send(...)
 
@@ -73,8 +73,6 @@ def _default_sdk_readiness_probe(
     host_bundle: str | None = None,
     host_executable: str | None = None,
 ):
-    from akvc.platforms.macos.virtual_camera import MacVirtualCamera
-
     resolved_app_bundle, resolved_app_executable = _resolve_container_app_args(
         app_bundle=app_bundle,
         app_executable=app_executable,
@@ -82,19 +80,18 @@ def _default_sdk_readiness_probe(
         host_executable=host_executable,
     )
 
-    cam = MacVirtualCamera(
-        width=width,
-        height=height,
-        fps=fps,
-        direct_only=True,
-        direct_sender_library=direct_sender_library,
-        app_bundle=resolved_app_bundle,
-        app_executable=resolved_app_executable,
-    )
-    return cam.direct_sender_readiness(
-        name=name,
-        request_camera_access=request_camera_access,
-    )
+    return {
+        "ready": None,
+        "blocker_code": "compatibility_probe_unavailable",
+        "message": (
+            "当前仓库已不再依赖旧的 Python macOS VirtualCamera facade；"
+            "请以 sender 自身 readiness 或已验收的原生运行链路为准。"
+        ),
+        "app_bundle": resolved_app_bundle,
+        "app_executable": resolved_app_executable,
+        "direct_sender_library": direct_sender_library,
+        "request_camera_access": bool(request_camera_access),
+    }
 
 
 def _make_bytes_frame_factory(*, width: int, height: int) -> tuple[Callable[[], Any], str]:

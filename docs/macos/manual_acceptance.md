@@ -53,14 +53,14 @@ python3 tools/make.py direct-sender-object-demo \
 - `device_snapshot.camera_access_status == "authorized"`
 - `device_snapshot.environment_device_enumeration_empty == false`
 
-新版对象 demo 还会额外输出一组聚合后的 SDK 诊断字段：
+新版对象 demo 还会额外输出一组聚合后的 Python 兼容层诊断字段：
 
 - `sdk_direct_sender_ready`
 - `sdk_direct_sender_blocker_code`
 - `sdk_direct_sender_readiness_message`
 - `sdk_direct_sender_readiness`
 
-它们不会改变“当前这条命令走的是低层对象直推路径”这个事实，只是把统一 SDK 层已经掌握的安装态 / Gatekeeper / system extension blocker 一并带进同一份 JSON。
+它们不会改变“当前这条命令走的是低层对象直推路径”这个事实，只是把 Python 兼容层已经掌握的安装态 / Gatekeeper / system extension blocker 一并带进同一份 JSON。
 
 如果命令成功但仍显示：
 
@@ -102,7 +102,7 @@ python3 tools/make.py direct-sender-object-demo \
 - `sdk_direct_sender_blocker_code == "host_notarization_missing"`
 - 或 `sdk_direct_sender_blocker_code == "system_extension_not_registered"`
 
-那就说明“目标设备没出现”只是低层现象，真正更靠前的阻塞其实已经被统一 SDK 识别出来了。
+那就说明“目标设备没出现”只是低层现象，真正更靠前的阻塞其实已经被 Python 兼容层识别出来了。
 
 ## 验收 2：纯对象单帧推送
 
@@ -139,9 +139,9 @@ python3 tools/make.py direct-sender-object-demo \
 
 表示这次原本确实尝试了真实推帧，只是为了补齐失败现场，脚本又额外做了一次只读 probe 快照，不代表这次验收只执行了探测。
 
-## 验收 3：统一 SDK 直连路径
+## 验收 3：Python 兼容层直连路径
 
-确认 `VirtualCamera` 封装层也没有退回 shared memory：
+确认 `VirtualCamera` 兼容封装层也没有退回 shared memory：
 
 ```bash
 python3 tools/make.py direct-push-demo \
@@ -158,7 +158,7 @@ python3 tools/make.py direct-push-demo \
 - `shared_memory_fallback_used == false`
 - `runtime_host_in_frame_hot_path == false`
 
-如果这一步失败，但“验收 2”成功，说明问题更可能在统一 SDK 包装层，而不是 native direct sender 本身。
+如果这一步失败，但“验收 2”成功，说明问题更可能在 Python 兼容封装层，而不是 native direct sender 本身。
 
 ## 验收 4：外部应用最小代码
 
@@ -176,7 +176,7 @@ sender = MacDirectCameraSender(
 sender.send(frame)
 ```
 
-统一 SDK 路径：
+Python 兼容层路径：
 
 ```python
 from akvc.sdk import VirtualCamera
@@ -202,7 +202,7 @@ vc.push_frame(frame)
 
 ## 验收 5：系统应用可见性
 
-在对象路径或 SDK 直连路径推帧成功后，再做系统侧人工确认：
+在对象路径或 Python 兼容层直连路径推帧成功后，再做系统侧人工确认：
 
 1. 打开 QuickTime
 2. 打开“新建影片录制”
@@ -215,18 +215,19 @@ vc.push_frame(frame)
 - `environment_device_enumeration_empty`
 - Camera Extension 是否真的已批准并完成注册
 
-对于统一 SDK 路径，还建议额外运行一遍：
+对于 `VirtualCamera` 兼容路径，还建议额外运行一遍：
 
 ```python
-from akvc.platforms.macos.virtual_camera import MacVirtualCamera
+from akvc.sdk import VirtualCamera
 import json
 
-cam = MacVirtualCamera(
+vc = VirtualCamera(
+    width=1280,
+    height=720,
+    fps=30,
     direct_only=True,
-    direct_sender_library="build/macos/Build/Products/Release/libakvc-macos-direct-sender.dylib",
-    host_bundle="/Applications/<your-container-app>.app",
 )
-print(json.dumps(cam.direct_sender_readiness(name="AKVC Demo", request_camera_access=True), ensure_ascii=False, indent=2))
+print(json.dumps(vc.direct_sender_readiness(request_camera_access=True), ensure_ascii=False, indent=2))
 ```
 
 这样做的原因是：
@@ -235,7 +236,7 @@ print(json.dumps(cam.direct_sender_readiness(name="AKVC Demo", request_camera_ac
 2. 如果它只返回：
    - `target_device_not_visible`
    并不能单独说明“Python 直推对象实现有问题”
-3. 截至 2026-06-30，统一 SDK 层已经会把这类结果与安装态合并判断
+3. 截至 2026-06-30，Python 兼容层已经会把这类结果与安装态合并判断
    - 当 direct sender 快照可见系统视频设备、但目标虚拟摄像头缺席
    - 且安装态已经能证明目标 container app 仍被 Gatekeeper 拒绝
    - `direct_sender_readiness()` 会进一步把 blocker 提升为：
@@ -256,7 +257,7 @@ print(json.dumps(cam.direct_sender_readiness(name="AKVC Demo", request_camera_ac
 1. `camera_access_status == "authorized"`
 2. 但 `/Applications/<your-container-app>.app` 仍是 `Unnotarized Developer ID`
 3. `syspolicy_check distribution /Applications/<your-container-app>.app` 仍会报 `Notary Ticket Missing`
-4. 因此统一 SDK 层 readiness 会把对象直推 blocker 提升为：
+4. 因此 Python 兼容层 readiness 会把对象直推 blocker 提升为：
    - `host_notarization_missing`
    而不是继续停留在：
    - `camera_access_denied`

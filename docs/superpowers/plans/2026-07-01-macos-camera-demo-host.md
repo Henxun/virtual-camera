@@ -83,7 +83,7 @@ def test_macos_demo_host_files_exist() -> None:
 Run:
 
 ```bash
-PYTHONPATH=camera-core/src:apps/cli ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_host or camera_demo_host"
+PYTHONPATH=camera-core/src:apps/desktop ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_host or camera_demo_host"
 ```
 
 Expected:
@@ -201,7 +201,7 @@ int main(int argc, const char* argv[]) {
 Run:
 
 ```bash
-PYTHONPATH=camera-core/src:apps/cli ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_host or camera_demo_host"
+PYTHONPATH=camera-core/src:apps/desktop ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_host or camera_demo_host"
 ```
 
 Expected:
@@ -247,7 +247,7 @@ def test_macos_demo_frame_generator_contract_is_present() -> None:
 Run:
 
 ```bash
-PYTHONPATH=camera-core/src:apps/cli ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_frame_generator"
+PYTHONPATH=camera-core/src:apps/desktop ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_frame_generator"
 ```
 
 Expected:
@@ -343,7 +343,7 @@ Expected:
 Run:
 
 ```bash
-PYTHONPATH=camera-core/src:apps/cli ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_frame_generator"
+PYTHONPATH=camera-core/src:apps/desktop ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_frame_generator"
 ```
 
 Expected:
@@ -386,7 +386,7 @@ def test_macos_frame_provider_supports_demo_mode_hook() -> None:
 Run:
 
 ```bash
-PYTHONPATH=camera-core/src:apps/cli ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_mode_hook"
+PYTHONPATH=camera-core/src:apps/desktop ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_mode_hook"
 ```
 
 Expected:
@@ -468,7 +468,7 @@ setenv("AKVC_MACOS_DEMO_FPS", "30", 1);
 Run:
 
 ```bash
-PYTHONPATH=camera-core/src:apps/cli ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_mode_hook or demo_frame_generator"
+PYTHONPATH=camera-core/src:apps/desktop ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_mode_hook or demo_frame_generator"
 ```
 
 Expected:
@@ -480,7 +480,7 @@ Expected:
 Run:
 
 ```bash
-PYTHONPATH=camera-core/src:apps/cli ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py
+PYTHONPATH=camera-core/src:apps/desktop ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py
 ```
 
 Expected:
@@ -525,7 +525,7 @@ def test_macos_demo_host_docs_exist_and_reference_manual_validation() -> None:
 Run:
 
 ```bash
-PYTHONPATH=camera-core/src:apps/cli ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_host_docs"
+PYTHONPATH=camera-core/src:apps/desktop ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_host_docs"
 ```
 
 Expected:
@@ -573,7 +573,7 @@ python3 tools/make.py build
 Run:
 
 ```bash
-PYTHONPATH=camera-core/src:apps/cli ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_host_docs"
+PYTHONPATH=camera-core/src:apps/desktop ./.venv/bin/pytest -q tests/unit/test_macos_native_skeleton.py -k "demo_host_docs"
 ```
 
 Expected:

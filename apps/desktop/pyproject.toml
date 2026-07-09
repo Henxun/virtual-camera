@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 akvc-desktop = "akvc_app.__main__:main"
+akvc = "akvc_app.compat_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["akvc_app*"]

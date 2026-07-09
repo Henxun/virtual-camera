@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Python SDK contract checks for the macOS virtual camera path.
+"""Python compatibility contract checks for the macOS virtual camera path.
 
-This checker keeps the macOS backend aligned with the existing cross-platform
-`VirtualCamera` surface so the public Python API does not drift while native
-Camera Extension work continues underneath.
+This checker keeps the surviving Python-facing `VirtualCamera` surface aligned
+while the native Camera Extension and control-layer implementation remain the
+repo's architecture truth underneath.
 """
 
 from __future__ import annotations
@@ -290,7 +290,7 @@ def evaluate_contract() -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="AKVC macOS Python SDK contract checker")
+    parser = argparse.ArgumentParser(description="AKVC macOS Python compatibility contract checker")
     parser.add_argument("--output")
     args = parser.parse_args(argv)
 
@@ -302,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(rendered + "\n", encoding="utf-8")
     if not bool(payload["consistency"]["all_checks_passed"]):
-        print("macOS Python SDK contract mismatch detected", file=sys.stderr)
+        print("macOS Python compatibility contract mismatch detected", file=sys.stderr)
         return 3
     return 0
 

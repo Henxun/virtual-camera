@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """PySide6/direct virtual camera demo helper.
 
-Provides small runnable examples for common real-time push modes:
-pure-Python numpy direct push, pull-based provider, latest-frame provider,
-QImage/QPixmap direct push, QWidget capture, primary-screen capture, and
-local video-file relay.
+Provides small runnable examples for current Python/PySide6 compatibility
+entrypoints over the native virtual-camera stack: pure-Python numpy direct
+push, pull-based provider, latest-frame provider, QImage/QPixmap direct push,
+QWidget capture, primary-screen capture, and local video-file relay.
 """
 
 from __future__ import annotations

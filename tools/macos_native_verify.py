@@ -17,7 +17,7 @@ useful on machines where XcodeGen or signing credentials are not available.
 - validation-session acceptance contract consistency
 - validation-session summary contract consistency
 - validation-session Markdown summary contract consistency
-- Python SDK contract consistency
+- Python compatibility contract consistency
 - Camera Extension stream-behavior contract consistency
 - Frame Bus consumer probe syntax
 - control-bridge sync-ipc command syntax
