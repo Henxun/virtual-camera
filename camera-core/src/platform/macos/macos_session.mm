@@ -2,8 +2,9 @@
 // Copyright 2026 AK Virtual Camera Authors
 //
 // macOS VirtualCamera session implementation. Reuses the existing pure-ObjC++
-// DirectSender (CMIO sink-stream queue injection, the vcam.mm path) and
-// AKVCSystemExtensionSupport (OSSystemExtensionRequest). See header.
+// DirectSender (CMIO sink-stream queue injection, the vcam.mm path). Extension
+// activation is owned by the container app: an activation step, not frame
+// delivery work. See header.
 
 #include "akvc/platform/macos/macos_session.h"
 
@@ -12,9 +13,7 @@
 #include "akvc/pipeline_ops.h"
 #include "akvc/pixel_format.h"
 
-#import <Foundation/Foundation.h>
 #include "AKVCDirectCameraSender.h"        // C ABI (akvc_macos_direct_sender_*)
-#import "AKVCSystemExtensionSupport.h"    // AKVCSubmitSystemExtensionRequest / AKVCQuerySystemExtensionStatus
 
 namespace akvc::macos {
 
@@ -67,34 +66,11 @@ akvc::Status MacVirtualCameraSession::start() {
         return akvc::Status::Ok;
     }
 
-    // 1. Ensure the camera extension is activated. Per the user's design
-    //    decision, start() submits an OSSystemExtensionRequest
-    //    activationRequestForExtension when the extension is not yet enabled.
-    @autoreleasepool {
-        NSString* ext_id = AKVCCameraExtensionIdentifier();
-        NSDictionary* status = AKVCQuerySystemExtensionStatus(ext_id, 5.0);
-        NSNumber* enabled_ns = status[@"enabled"];
-        BOOL enabled = enabled_ns ? [enabled_ns boolValue] : NO;
-        if (!enabled) {
-            NSError* err = nil;
-            BOOL ok = AKVCSubmitSystemExtensionRequest(YES, 30.0, &err);
-            if (!ok) {
-                std::string msg = "failed to activate camera extension";
-                if (err != nil) {
-                    msg += ": ";
-                    msg += [err.localizedDescription UTF8String];
-                }
-                set_error(msg);
-                return akvc::Status::ExtensionActivationFailed;
-            }
-            // Activation may require user approval (requestNeedsUserApproval);
-            // AKVCSubmitSystemExtensionRequest returns YES in that case. We
-            // proceed to attach the DirectSender; if the extension is not yet
-            // live, DirectSender.start will fail with StreamStartFailed.
-        }
-    }
-
-    // 2. Create + start the DirectSender (CMIO sink-stream queue injection).
+    // Create + start the DirectSender (CMIO sink-stream queue injection). Do
+    // not submit extension activation requests here: repeated requests can
+    // replace the live CMIO provider while a Stop/Start cycle is in progress.
+    // If the extension is missing, DirectSender.start reports the device lookup
+    // failure and the install/readiness layer presents the recovery steps.
     char errbuf[512] = {0};
     sender_ = akvc_macos_direct_sender_create(width_, height_, fps_, errbuf, sizeof(errbuf));
     if (sender_ == nullptr) {

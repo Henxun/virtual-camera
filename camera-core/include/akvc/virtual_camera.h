@@ -14,8 +14,9 @@
 //   - Windows: ensure the helper daemon is running (runtime), then open the
 //     shared-memory frame bus. Does NOT register the MF virtual camera
 //     (installation is a separate step).
-//   - macOS: activate the camera extension (OSSystemExtensionRequest) if needed,
-//     then attach a CMIO sink-stream DirectSender (the vcam.mm path).
+//   - macOS: attach a CMIO sink-stream DirectSender (the vcam.mm path). Camera
+//     Extension activation/approval is handled by the container app before
+//     frame delivery starts.
 //
 // The header is pure C++ (no windows.h / ObjC); platform state is held via pimpl.
 

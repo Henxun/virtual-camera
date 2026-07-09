@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include <pybind11/pybind11.h>
@@ -18,6 +19,29 @@
 #include "akvc/virtual_camera.h"
 
 namespace py = pybind11;
+
+#ifdef __APPLE__
+extern "C" int akvc_macos_system_extension_status_json(
+    double timeout_seconds,
+    char* json_buffer,
+    size_t json_capacity,
+    char* error_buffer,
+    size_t error_capacity
+);
+
+extern "C" int akvc_macos_activate_system_extension(
+    double timeout_seconds,
+    char* error_buffer,
+    size_t error_capacity
+);
+
+extern "C" int akvc_macos_direct_sender_list_devices_json(
+    char* json_buffer,
+    size_t json_capacity,
+    char* error_message,
+    size_t error_capacity
+);
+#endif
 
 namespace {
 
@@ -64,6 +88,62 @@ akvc::Status push_frame_py(akvc::VirtualCamera& self,
     return self.push_frame(f);
 }
 
+#ifdef __APPLE__
+std::string macos_system_extension_status_json_py(double timeout_seconds) {
+    std::vector<char> payload(16384, '\0');
+    char error[1024] = {0};
+    const int rc = akvc_macos_system_extension_status_json(
+        timeout_seconds,
+        payload.data(),
+        payload.size(),
+        error,
+        sizeof(error)
+    );
+    if (rc != 0) {
+        throw std::runtime_error(error[0] ? error : "macOS system extension status query failed");
+    }
+    return std::string(payload.data());
+}
+
+bool macos_activate_system_extension_py(double timeout_seconds) {
+    char error[1024] = {0};
+    const int rc = akvc_macos_activate_system_extension(timeout_seconds, error, sizeof(error));
+    if (rc != 0) {
+        throw std::runtime_error(error[0] ? error : "macOS system extension activation failed");
+    }
+    return true;
+}
+
+std::string macos_list_devices_json_py() {
+    std::vector<char> payload(16384, '\0');
+    char error[1024] = {0};
+    const int rc = akvc_macos_direct_sender_list_devices_json(
+        payload.data(),
+        payload.size(),
+        error,
+        sizeof(error)
+    );
+    if (rc != 0) {
+        throw std::runtime_error(error[0] ? error : "macOS device enumeration failed");
+    }
+    return std::string(payload.data());
+}
+#else
+std::string macos_system_extension_status_json_py(double timeout_seconds) {
+    (void)timeout_seconds;
+    throw std::runtime_error("macOS system extension status is only available on macOS");
+}
+
+bool macos_activate_system_extension_py(double timeout_seconds) {
+    (void)timeout_seconds;
+    throw std::runtime_error("macOS system extension activation is only available on macOS");
+}
+
+std::string macos_list_devices_json_py() {
+    throw std::runtime_error("macOS device enumeration is only available on macOS");
+}
+#endif
+
 }  // namespace
 
 PYBIND11_MODULE(akvc_camera, m) {
@@ -105,4 +185,13 @@ PYBIND11_MODULE(akvc_camera, m) {
         .def_property_readonly("started", &akvc::VirtualCamera::started)
         .def_property_readonly("consumer_count", &akvc::VirtualCamera::consumer_count)
         .def_property_readonly("last_error", &akvc::VirtualCamera::last_error);
+
+    m.def("macos_system_extension_status_json",
+          &macos_system_extension_status_json_py,
+          py::arg("timeout_seconds") = 5.0);
+    m.def("macos_activate_system_extension",
+          &macos_activate_system_extension_py,
+          py::arg("timeout_seconds") = 30.0);
+    m.def("macos_list_devices_json",
+          &macos_list_devices_json_py);
 }

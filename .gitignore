@@ -11,6 +11,8 @@ dist/
 *.tlog
 *.exe
 !installer/**/*.exe
+build-macos/
+nuitka-crash-report.xml
 
 # Python
 __pycache__/

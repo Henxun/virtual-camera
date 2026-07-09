@@ -17,7 +17,7 @@ macOS 当前已补充安装状态展示基线：
 
 1. 桌面端 `ServiceFacade` 会轮询 Camera Extension 安装状态
 2. `MainViewModel` 会透传 `install_state` / `install_phase` / `install_devices`
-3. 主窗口当前提供 `Install` 按钮，并在状态区显示安装阶段与设备可见性
+3. 主窗口当前提供 `Activate` 按钮，并在状态区显示激活阶段与设备可见性
 4. 对 `pending_approval` / `installed_visible` / `timeout_waiting_for_device` 等阶段会补充用户引导文案
 5. 对关键阶段还会展示结构化步骤列表，帮助用户按顺序完成批准、重试和目标应用验证
 6. 当前还提供 `Open Settings` 与 `Recheck` 动作，方便用户在批准扩展后主动刷新安装状态
@@ -25,7 +25,7 @@ macOS 当前已补充安装状态展示基线：
 8. 每个目标应用都会附带 `ready` / `status` / `steps`，供主窗口、后续 CLI 或测试报告复用
 9. 当前桌面端的安装/状态链路已做惰性导入处理：仅查看安装状态、批准提示和设备可见性时，不再强制依赖 `numpy` / `cv2`
 10. 只有真正点击 `Start` 启动推流 worker 时，才会加载 `frame_worker`、`numpy` 和 `cv2`
-11. 如果当前机器只想完成 Camera Extension 安装验证而没有视频依赖，桌面端现在仍可打开并完成 `Install / Open Settings / Recheck`
+11. 如果当前机器只想完成 Camera Extension 激活验证而没有视频依赖，桌面端现在仍可打开并完成 `Activate / Open Settings / Recheck`
 12. 如果在 `Start` 时缺少 `numpy` 或 `cv2`，当前会直接给出明确错误，而不是在导入阶段就让整个桌面端启动失败
 13. 主窗口当前还会根据 `stream_start_ready` 自动禁用或启用 `Start` 按钮：
    - 扩展未批准 / 设备未可见：禁用 `Start`

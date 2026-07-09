@@ -152,7 +152,9 @@ static NSError* AKVCSinkStreamSourceError(NSInteger code, NSString* description)
 
 - (BOOL)stopStreamAndReturnError:(NSError* _Nullable __autoreleasing*)outError {
     (void)outError;
+    NSLog(@"AKVC SINK stopStream entry stream=%p streaming=%d", self.stream, self.streaming);
     if (!self.streaming) {
+        NSLog(@"AKVC SINK stopStream -> YES (already stopped)");
         return YES;
     }
     self.streaming = NO;
@@ -161,6 +163,7 @@ static NSError* AKVCSinkStreamSourceError(NSInteger code, NSString* description)
         dispatch_source_cancel(self.timer);
         self.timer = nil;
     }
+    NSLog(@"AKVC SINK stopStream -> YES");
     return YES;
 }
 
@@ -221,4 +224,3 @@ static NSError* AKVCSinkStreamSourceError(NSInteger code, NSString* description)
 }
 
 @end
-

@@ -206,6 +206,37 @@ static OSSystemExtensionRequest* AKVCMakeSystemExtensionRequest(BOOL activate) {
     return [OSSystemExtensionRequest deactivationRequestForExtension:identifier queue:queue];
 }
 
+static OSSystemExtensionProperties* AKVCSelectBestSystemExtensionProperty(
+    NSArray<OSSystemExtensionProperties*>* properties
+) {
+    OSSystemExtensionProperties* awaitingApproval = nil;
+    OSSystemExtensionProperties* uninstalling = nil;
+    OSSystemExtensionProperties* fallback = nil;
+
+    for (OSSystemExtensionProperties* property in properties ?: @[]) {
+        if (fallback == nil) {
+            fallback = property;
+        }
+        if (property.isEnabled) {
+            return property;
+        }
+        if (awaitingApproval == nil && property.isAwaitingUserApproval) {
+            awaitingApproval = property;
+        }
+        if (uninstalling == nil && property.isUninstalling) {
+            uninstalling = property;
+        }
+    }
+
+    if (awaitingApproval != nil) {
+        return awaitingApproval;
+    }
+    if (uninstalling != nil) {
+        return uninstalling;
+    }
+    return fallback;
+}
+
 NSString* AKVCCameraExtensionIdentifier(void) {
     return AKVCCameraExtensionBundleIdentifier;
 }
@@ -293,7 +324,7 @@ NSDictionary* AKVCQuerySystemExtensionStatus(NSString* extensionIdentifier, NSTi
         return payload;
     }
 
-    OSSystemExtensionProperties* property = runner.properties.firstObject;
+    OSSystemExtensionProperties* property = AKVCSelectBestSystemExtensionProperty(runner.properties);
     if (property == nil) {
         return payload;
     }

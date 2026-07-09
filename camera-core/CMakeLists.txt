@@ -49,6 +49,7 @@ if(APPLE)
     enable_language(OBJCXX)
     add_library(akvc_camera_macos STATIC
         src/platform/macos/macos_session.mm
+        src/platform/macos/system_extension_control.mm
         ${CMAKE_SOURCE_DIR}/virtualcam/macos/direct_sender/AKVCDirectCameraSender.mm
         ${CMAKE_SOURCE_DIR}/virtualcam/macos/control_bridge/AKVCSystemExtensionSupport.mm
         ${CMAKE_SOURCE_DIR}/virtualcam/macos/control_bridge/AKVCCommandSupport.mm

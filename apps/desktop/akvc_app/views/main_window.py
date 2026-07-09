@@ -35,7 +35,7 @@ class MainWindow(QMainWindow):
         self._source_combo.currentIndexChanged.connect(self._on_source_changed)
 
         # Start/Stop
-        self._btn_install = QPushButton("Install", self)
+        self._btn_install = QPushButton("Activate", self)
         self._btn_open_settings = QPushButton("Open Settings", self)
         self._btn_recheck_install = QPushButton("Recheck", self)
         self._btn_start = QPushButton("Start", self)
@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
 
         # Status labels
         self._lbl_state = QLabel("Idle", self)
-        self._lbl_install = QLabel("Install: unknown", self)
+        self._lbl_install = QLabel("Activation: unknown", self)
         self._lbl_install_hint = QLabel("", self)
         self._lbl_install_hint.setWordWrap(True)
         self._lbl_install_steps = QLabel("", self)
@@ -182,7 +182,7 @@ class MainWindow(QMainWindow):
                                supported_formats: list, supported_frame_rates: list,
                                ipc_probe_present: bool, ipc_ready, ipc_environment_blocked: bool,
                                ipc_direct_open_errno) -> str:
-        lines = [f"Install state: {state}" + (f" ({phase})" if phase else "")]
+        lines = [f"Activation state: {state}" + (f" ({phase})" if phase else "")]
         if devices:
             lines.append("Devices: " + ", ".join(str(d) for d in devices))
         if supported_formats:

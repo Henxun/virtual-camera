@@ -67,13 +67,32 @@ def _binding_so() -> Path:
     return Path()
 
 
+def _binding_inputs() -> list[Path]:
+    return [
+        ROOT / "camera-core" / "CMakeLists.txt",
+        ROOT / "camera-core" / "bindings" / "python" / "module.cpp",
+        ROOT / "camera-core" / "src" / "platform" / "macos" / "macos_session.mm",
+        ROOT / "virtualcam" / "macos" / "direct_sender" / "AKVCDirectCameraSender.mm",
+    ]
+
+
+def _binding_is_stale(so: Path) -> bool:
+    if not so.is_file():
+        return True
+    so_mtime = so.stat().st_mtime
+    return any(src.is_file() and src.stat().st_mtime > so_mtime for src in _binding_inputs())
+
+
 def ensure_binding_built() -> Path:
     """Configure + build the akvc_camera_python target if the .so is missing."""
     so = _binding_so()
-    if so.is_file():
+    if so.is_file() and not _binding_is_stale(so):
         print(f"[package] akvc_camera binding found: {so}")
         return so
-    print("[package] building C++ akvc_camera binding (cmake)...")
+    if so.is_file():
+        print(f"[package] rebuilding stale akvc_camera binding: {so}")
+    else:
+        print("[package] building C++ akvc_camera binding (cmake)...")
     rc = _run(["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR),
                "-DCMAKE_BUILD_TYPE=Release"])
     if rc != 0:
@@ -168,6 +187,14 @@ def run_nuitka(binding_so: Path) -> int:
     return _run(cmd, env=env)
 
 
+def clean_previous_app_bundles() -> None:
+    """Remove stale app bundles so this run cannot sign/package old output."""
+    for app in (DIST_DIR / BUNDLE_NAME, DIST_DIR / f"{ENTRY.stem}.app"):
+        if app.exists():
+            shutil.rmtree(app)
+            print(f"[package] removed stale app bundle: {app}")
+
+
 def patch_info_plist(app: Path) -> None:
     """Add NSCameraUsageDescription to the bundle's Info.plist.
 
@@ -182,8 +209,10 @@ def patch_info_plist(app: Path) -> None:
         return
     with open(plist_path, "rb") as f:
         data = plistlib.load(f)
+    data.setdefault("NSPrincipalClass", "NSApplication")
     data.setdefault("NSCameraUsageDescription",
                     "AK Virtual Camera needs camera access to stream frames.")
+    data.setdefault("NSCameraUseContinuityCameraDeviceType", True)
     # Also declare the system-extension install intent (informational).
     data.setdefault("NSSystemExtensionUsageDescription",
                     "AK Virtual Camera installs a camera extension.")
@@ -216,8 +245,9 @@ def sign_bundle(app: Path) -> None:
 
     Order: sign the host app deep first (covers PySide6/Python nested
     binaries with Hardened Runtime + host entitlements), then re-sign the
-    embedded extension with its own (camera-extension sandbox) entitlements
-    -- --deep would otherwise overwrite them."""
+    embedded extension with its own (camera-extension sandbox) entitlements.
+    Re-sign the host shallow at the end so the outer app seal records the
+    final extension signature without overwriting extension entitlements."""
     identity = os.environ.get("AKVC_SIGN_IDENTITY", "-")
     ext_ent = ROOT / "virtualcam" / "macos" / "camera_extension" / "CameraExtension.entitlements"
     host_ent = ROOT / "tools" / "nuitka_host.entitlements"
@@ -244,7 +274,18 @@ def sign_bundle(app: Path) -> None:
         if rc != 0:
             print(f"[package] warning: codesign extension rc={rc}", file=sys.stderr)
 
-    _run(["codesign", "--verify", "--verbose=2", str(app)])
+    seal_cmd = ["codesign", "--force", "--options", "runtime",
+                "--timestamp=none", "-s", identity]
+    if host_ent.is_file():
+        seal_cmd += ["--entitlements", str(host_ent)]
+    seal_cmd += [str(app)]
+    rc = _run(seal_cmd)
+    if rc != 0:
+        print(f"[package] warning: codesign host seal rc={rc}", file=sys.stderr)
+
+    rc = _run(["codesign", "--verify", "--verbose=2", str(app)])
+    if rc != 0:
+        sys.exit("[package] codesign verify failed")
 
 
 def main() -> int:
@@ -253,6 +294,7 @@ def main() -> int:
         return 1
 
     binding_so = ensure_binding_built()
+    clean_previous_app_bundles()
     rc = run_nuitka(binding_so)
     if rc != 0:
         return rc

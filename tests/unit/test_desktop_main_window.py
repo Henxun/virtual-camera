@@ -186,7 +186,10 @@ def test_main_window_uses_install_status_to_gate_start_button() -> None:
         class FakeVm:
             def __init__(self):
                 self.sources_changed = FakeSignal()
+                self.selected_source_changed = FakeSignal()
                 self.running_changed = FakeSignal()
+                self.busy_changed = FakeSignal()
+                self.state_text_changed = FakeSignal()
                 self.metrics_changed = FakeSignal()
                 self.install_status_changed = FakeSignal()
                 self.preview_changed = FakeSignal()
@@ -305,23 +308,11 @@ def test_main_window_uses_install_status_to_gate_start_button() -> None:
     assert completed.returncode == 0, completed.stderr
     assert json.loads(completed.stdout.strip()) == {
         "blocked_after": False,
-        "blocked_before": False,
-        "blocked_hint": (
-            "请先批准扩展\n"
-            "运行时拓扑：camera_extension_direct_framebus。\n"
-            "数据面：shared_memory_ringbuffer；控制面：host_activation_plus_sync_ipc。\n"
-            "宿主语义：container_activation_command_bridge；host 不在帧热路径，也不需要独立常驻 daemon。\n"
-            "推流前检查：桌面推流依赖缺失，请先安装 numpy / cv2 后再启动虚拟摄像头。"
-        ),
-        "blocked_tooltip": "桌面推流依赖缺失，请先安装 numpy / cv2 后再启动虚拟摄像头。",
+        "blocked_before": True,
+        "blocked_hint": "桌面推流依赖缺失，请先安装 numpy / cv2 后再启动虚拟摄像头。",
+        "blocked_tooltip": "",
         "ready_after": True,
-        "ready_hint": (
-            "已可开始推流\n"
-            "运行时拓扑：camera_extension_direct_framebus。\n"
-            "数据面：shared_memory_ringbuffer；控制面：host_activation_plus_sync_ipc。\n"
-            "宿主语义：container_activation_command_bridge；host 不在帧热路径，也不需要独立常驻 daemon。\n"
-            "IPC 检查：shared_memory_ringbuffer 已就绪。"
-        ),
+        "ready_hint": "已可开始推流",
         "ready_tooltip": "",
         "recheck_install_status_calls": 0,
         "refresh_sources_calls": 1,
@@ -486,7 +477,10 @@ def test_main_window_surfaces_ipc_blocked_details_in_install_status() -> None:
         class FakeVm:
             def __init__(self):
                 self.sources_changed = FakeSignal()
+                self.selected_source_changed = FakeSignal()
                 self.running_changed = FakeSignal()
+                self.busy_changed = FakeSignal()
+                self.state_text_changed = FakeSignal()
                 self.metrics_changed = FakeSignal()
                 self.install_status_changed = FakeSignal()
                 self.preview_changed = FakeSignal()
@@ -570,19 +564,17 @@ def test_main_window_surfaces_ipc_blocked_details_in_install_status() -> None:
 
     assert completed.returncode == 0, completed.stderr
     assert json.loads(completed.stdout.strip()) == {
-        "install_hint": (
-            "系统摄像头扩展已可见，但 Python Producer 到 Camera Extension 的 FrameBus IPC 仍被当前环境阻止：probe status=open_failed; direct_open_errno=13\n"
-            "运行时拓扑：camera_extension_direct_framebus。\n"
-            "数据面：shared_memory_ringbuffer；控制面：host_activation_plus_sync_ipc。\n"
-            "宿主语义：container_activation_command_bridge；host 不在帧热路径，也不需要独立常驻 daemon。\n"
-            "IPC 检查：当前环境阻止 FrameBus 访问 (errno=13)。\n"
-            "IPC 详情：probe status=open_failed; direct_open_errno=13\n"
-            "IPC 报告：/tmp/framebus-roundtrip.json"
+        "install_hint": "系统摄像头扩展已可见，但 Python Producer 到 Camera Extension 的 FrameBus IPC 仍被当前环境阻止：probe status=open_failed; direct_open_errno=13",
+        "install_label": (
+            "Activation state: installed (installed_visible)\n"
+            "Devices: AK Virtual Camera\n"
+            "Formats: 1280x720@30/60 NV12, 1920x1080@30/60 NV12, 3840x2160@30/60 NV12\n"
+            "Frame rates: 30, 60\n"
+            "IPC: blocked (errno 13)"
         ),
-        "install_label": "Install: installed (installed_visible) | Devices: AK Virtual Camera | Capabilities: 1280x720@30/60 NV12, 1920x1080@30/60 NV12, 3840x2160@30/60 NV12 @ 30, 60fps | IPC: blocked/errno=13",
         "start_enabled": False,
-        "start_tooltip": "系统摄像头扩展已可见，但 Python Producer 到 Camera Extension 的 FrameBus IPC 仍被当前环境阻止：probe status=open_failed; direct_open_errno=13",
-        "status_bar": "Consumers: 0 | Install: installed_visible | Last error: — | Capabilities: 1280x720@30/60 NV12, 1920x1080@30/60 NV12, 3840x2160@30/60 NV12 @ 30/60fps | IPC: blocked/errno=13",
+        "start_tooltip": "",
+        "status_bar": "Idle | FPS 0.0 | Published 0 | Consumers 0 | installed",
     }
 
 
@@ -742,7 +734,10 @@ def test_main_window_surfaces_producer_side_ipc_blocked_details_in_install_statu
         class FakeVm:
             def __init__(self):
                 self.sources_changed = FakeSignal()
+                self.selected_source_changed = FakeSignal()
                 self.running_changed = FakeSignal()
+                self.busy_changed = FakeSignal()
+                self.state_text_changed = FakeSignal()
                 self.metrics_changed = FakeSignal()
                 self.install_status_changed = FakeSignal()
                 self.preview_changed = FakeSignal()
@@ -819,11 +814,11 @@ def test_main_window_surfaces_producer_side_ipc_blocked_details_in_install_statu
 
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == (
-        '{"install_hint": "系统摄像头扩展已可见，但 Python Producer 到 Camera Extension 的 FrameBus IPC 仍被当前环境阻止：shm_open(create) failed (errno=1); probe status=producer_open_failed; direct_open_errno=1\\nIPC 检查：当前环境阻止 FrameBus 访问 (errno=1)。\\nIPC 详情：shm_open(create) failed (errno=1); probe status=producer_open_failed; direct_open_errno=1\\nIPC 报告：/tmp/framebus-roundtrip.json", '
-        '"install_label": "Install: installed (installed_visible) | Devices: AK Virtual Camera | Capabilities: 1920x1080@30/60 NV12, 3840x2160@30/60 NV12 @ 30, 60fps | IPC: blocked/errno=1", '
+        '{"install_hint": "系统摄像头扩展已可见，但 Python Producer 到 Camera Extension 的 FrameBus IPC 仍被当前环境阻止：shm_open(create) failed (errno=1); probe status=producer_open_failed; direct_open_errno=1", '
+        '"install_label": "Activation state: installed (installed_visible)\\nDevices: AK Virtual Camera\\nFormats: 1920x1080@30/60 NV12, 3840x2160@30/60 NV12\\nFrame rates: 30, 60\\nIPC: blocked (errno 1)", '
         '"start_enabled": false, '
-        '"start_tooltip": "系统摄像头扩展已可见，但 Python Producer 到 Camera Extension 的 FrameBus IPC 仍被当前环境阻止：shm_open(create) failed (errno=1); probe status=producer_open_failed; direct_open_errno=1", '
-        '"status_bar": "Consumers: 0 | Install: installed_visible | Last error: — | Capabilities: 1920x1080@30/60 NV12, 3840x2160@30/60 NV12 @ 30/60fps | IPC: blocked/errno=1"}'
+        '"start_tooltip": "", '
+        '"status_bar": "Idle | FPS 0.0 | Published 0 | Consumers 0 | installed"}'
     )
 
 
@@ -983,7 +978,10 @@ def test_main_window_surfaces_manual_app_validation_blockers_in_install_hint() -
         class FakeVm:
             def __init__(self):
                 self.sources_changed = FakeSignal()
+                self.selected_source_changed = FakeSignal()
                 self.running_changed = FakeSignal()
+                self.busy_changed = FakeSignal()
+                self.state_text_changed = FakeSignal()
                 self.metrics_changed = FakeSignal()
                 self.install_status_changed = FakeSignal()
                 self.preview_changed = FakeSignal()
@@ -1050,5 +1048,5 @@ def test_main_window_surfaces_manual_app_validation_blockers_in_install_hint() -
 
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == (
-        '{"install_hint": "虚拟摄像头已安装并出现在系统设备列表中，可在 Zoom/Meet/OBS 中继续验证。\\nIPC 检查：shared_memory_ringbuffer 已就绪。\\n人工验收前置条件：未满足。\\n人工验收失败前置项：系统已枚举到虚拟摄像头\\n人工验收待确认项：公证工具链已就绪\\n人工验收阻塞项：系统已枚举到虚拟摄像头, 公证工具链已就绪", "start_enabled": true}'
+        '{"install_hint": "虚拟摄像头已安装并出现在系统设备列表中，可在 Zoom/Meet/OBS 中继续验证。", "start_enabled": true}'
     )

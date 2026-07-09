@@ -29,7 +29,13 @@ def main() -> int:
 
     vm = MainViewModel(facade)
     win = MainWindow(vm)
-    win.show()
+    app._akvc_main_window = win  # keep the top-level window alive under Nuitka
+    win.showNormal()
+    win.raise_()
+    win.activateWindow()
+    app.setActiveWindow(win)
+    app.processEvents()
+    log.info("akvc.app.window_shown")
 
     rc = app.exec()
     facade.shutdown()

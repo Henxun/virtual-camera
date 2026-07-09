@@ -314,6 +314,48 @@ static NSDictionary* AKVCRequestCameraAccessSnapshot(NSString** error) {
     return AKVCBuildCameraSnapshot();
 }
 
+static BOOL AKVCEnsureCameraAccess(NSString** error) {
+    AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+    if (status == AVAuthorizationStatusAuthorized) {
+        return YES;
+    }
+    if (status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted) {
+        if (error != nullptr) {
+            *error = @"camera permission not granted (System Settings -> Privacy & Security -> Camera)";
+        }
+        return NO;
+    }
+
+    __block BOOL camera_granted = NO;
+    __block BOOL completed = NO;
+    dispatch_semaphore_t cam_sem = dispatch_semaphore_create(0);
+    void (^request_access)(void) = ^{
+        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
+            camera_granted = granted;
+            completed = YES;
+            dispatch_semaphore_signal(cam_sem);
+        }];
+    };
+
+    if ([NSThread isMainThread]) {
+        request_access();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), request_access);
+    }
+
+    long wait_status = dispatch_semaphore_wait(cam_sem, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC));
+    if (wait_status != 0 || !completed) {
+        if (error != nullptr) {
+            *error = @"timed out while waiting for camera permission";
+        }
+        return NO;
+    }
+    if (!camera_granted && error != nullptr) {
+        *error = @"camera permission not granted (System Settings -> Privacy & Security -> Camera)";
+    }
+    return camera_granted;
+}
+
 static CMTime AKVCPresentationTimeFromPTS100ns(uint64_t pts_100ns) {
     if (pts_100ns == 0) {
         return CMClockGetTime(CMClockGetHostTimeClock());
@@ -349,35 +391,11 @@ public:
             return false;
         }
 
-        // Request camera permission (TCC) on the main thread before any
-        // AVCaptureDevice access. Without permission,
-        // AVCaptureDeviceDiscoverySession returns empty -> "camera device not
-        // found". A repackaged ad-hoc-signed app is treated as a new identity,
-        // so this re-triggers the prompt each rebuild.
-        __block BOOL camera_granted = NO;
-        dispatch_semaphore_t cam_sem = dispatch_semaphore_create(0);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (@available(macOS 14.0, *)) {
-                [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
-                    camera_granted = granted;
-                    dispatch_semaphore_signal(cam_sem);
-                }];
-            } else {
-                #pragma clang diagnostic push
-                #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
-                    camera_granted = granted;
-                    dispatch_semaphore_signal(cam_sem);
-                }];
-                #pragma clang diagnostic pop
-            }
-        });
-        dispatch_semaphore_wait(cam_sem, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC));
-        std::fprintf(stderr, "[akvc] camera permission granted=%d\n", (int)camera_granted);
-        if (!camera_granted) {
-            if (error != nullptr) {
-                *error = @"camera permission not granted (System Settings -> Privacy & Security -> Camera)";
-            }
+        // TCC is separate from System Extension activation. Once the user has
+        // already granted camera access, avoid dispatching to the main queue and
+        // synchronously waiting: command-line smoke tests and some packaged
+        // starts may not have a running main queue yet.
+        if (!AKVCEnsureCameraAccess(error)) {
             return false;
         }
 
@@ -723,6 +741,16 @@ private:
         if (![device_types containsObject:AVCaptureDeviceTypeExternalUnknown]) {
             [device_types addObject:AVCaptureDeviceTypeExternalUnknown];
         }
+        NSMutableString* requested_types = [NSMutableString string];
+        for (AVCaptureDeviceType device_type in device_types) {
+            [requested_types appendFormat:@"[%@] ", device_type];
+        }
+        const char* bundle_id = NSBundle.mainBundle.bundleIdentifier.UTF8String ?: "";
+        std::fprintf(stderr,
+                     "[akvc] findDevice device_types=%s continuity_allowed=%d bundle=%s\n",
+                     [requested_types UTF8String],
+                     (int)allow_continuity_camera,
+                     bundle_id);
         // The camera-extension device is exposed asynchronously (the extension
         // process starts on-demand). A one-shot .devices query races the
         // extension startup - poll AVFoundation for up to ~8s until the device
@@ -804,6 +832,9 @@ private:
         for (NSUInteger index = 0; index < device_count; ++index) {
             CMIODeviceID candidate = device_ids[index];
             NSString* candidate_name = AKVCCopyCMIODeviceName(candidate);
+            std::fprintf(stderr, "[akvc] CMIO device candidate id=0x%x name=%s\n",
+                         static_cast<unsigned>(candidate),
+                         [candidate_name UTF8String] ?: "");
             if ([candidate_name isEqualToString:name]) {
                 return candidate;
             }

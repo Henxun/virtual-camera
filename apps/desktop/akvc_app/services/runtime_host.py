@@ -29,6 +29,13 @@ PREVIEW_WIDTH = 320
 PREVIEW_HEIGHT = 180
 
 
+def _repo_root_from_here() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "camera-core").is_dir() and (parent / "apps" / "desktop").is_dir():
+            return parent
+    return Path(__file__).resolve().parents[4]
+
+
 def _import_akvc_camera():
     """Import the akvc_camera pybind module, searching common build locations."""
     try:
@@ -36,9 +43,12 @@ def _import_akvc_camera():
         return akvc_camera
     except ImportError:
         pass
-    # Dev checkout: the .pyd lands in build/bin/Release.
-    repo_root = Path(__file__).resolve().parents[3]
+    # Dev checkout: the extension lands under build-macos/bin on macOS and
+    # build/bin/Release on Windows. Resolve from markers so app packaging or
+    # source tree depth changes do not hide the binding.
+    repo_root = _repo_root_from_here()
     candidates = [
+        repo_root / "build-macos" / "bin",
         repo_root / "build" / "bin" / "Release",
         repo_root / "akvc" / "_runtime" / "windows",
     ]

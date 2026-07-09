@@ -3,10 +3,9 @@
 //
 // macOS VirtualCamera session — CMIO sink-stream queue injection.
 //
-// start(): query the camera extension status; if not enabled, submit an
-//          OSSystemExtensionRequest activationRequestForExtension (per the
-//          user's explicit design decision), then attach a DirectSender to the
-//          extension's CMIO sink stream (the vcam.mm path).
+// start(): attach a DirectSender to the extension's CMIO sink stream (the
+//          vcam.mm path). Camera Extension activation/approval is owned by the
+//          container app before frame delivery starts.
 // push_frame(): normalize input to BGR24, resize to target, enqueue a
 //          CMSampleBuffer via the DirectSender.
 //

@@ -74,6 +74,18 @@ def test_main_view_model_emits_ipc_install_fields() -> None:
             def start(self):
                 self.started = True
 
+        class QThread(QObject):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.started = FakeBoundSignal()
+                self.finished = FakeBoundSignal()
+            def start(self):
+                self.started.emit()
+            def quit(self):
+                self.finished.emit()
+            def deleteLater(self):
+                pass
+
         class QImage:
             Format = types.SimpleNamespace(Format_RGB888=0)
             def __init__(self, *args, **kwargs):
@@ -86,6 +98,7 @@ def test_main_view_model_emits_ipc_install_fields() -> None:
 
         qtcore = types.ModuleType("PySide6.QtCore")
         qtcore.QObject = QObject
+        qtcore.QThread = QThread
         qtcore.QTimer = QTimer
         qtcore.Signal = Signal
         qtcore.Slot = Slot
@@ -290,6 +303,18 @@ def test_main_vm_propagates_producer_side_ipc_blocker_state() -> None:
             def start(self):
                 self.started = True
 
+        class FakeThread(FakeQObject):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.started = FakeSignal()
+                self.finished = FakeSignal()
+            def start(self):
+                self.started.emit()
+            def quit(self):
+                self.finished.emit()
+            def deleteLater(self):
+                pass
+
         class FakeImage:
             class Format:
                 Format_RGB888 = 0
@@ -304,6 +329,7 @@ def test_main_vm_propagates_producer_side_ipc_blocker_state() -> None:
 
         qtcore = types.ModuleType("PySide6.QtCore")
         qtcore.QObject = FakeQObject
+        qtcore.QThread = FakeThread
         qtcore.QTimer = FakeTimer
         qtcore.Signal = FakeSignal
         def Slot(*args, **kwargs):
@@ -334,10 +360,20 @@ def test_main_vm_propagates_producer_side_ipc_blocker_state() -> None:
             install_state="installed",
             install_phase="installed_visible",
             install_devices=["AK Virtual Camera"],
+            install_all_devices=["AK Virtual Camera"],
+            install_device_prefix="AK Virtual Camera",
             approval_required=False,
             install_enabled=True,
             supported_formats=["1920x1080@30/60 NV12", "3840x2160@30/60 NV12"],
             supported_frame_rates=[30, 60],
+            runtime_topology_kind="camera_extension",
+            runtime_frame_path="direct_sender",
+            runtime_host_role="container_activation_command_bridge",
+            runtime_host_in_frame_hot_path=False,
+            runtime_dedicated_host_daemon_required=False,
+            runtime_container_app_configured=True,
+            runtime_data_plane="cmio_sink_stream",
+            runtime_control_plane="system_extension_activation",
             ipc_transport="iosurface_ring",
             ipc_probe_present=True,
             ipc_ready=False,

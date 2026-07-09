@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
 import os
 import sys
@@ -13,8 +14,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from .runtime_host import RuntimeHost
-from .source_info import ProviderInfo, list_test_pattern_sources, list_usb_sources
+from .runtime_host import RuntimeHost, _import_akvc_camera
+from .source_info import (
+    ProviderInfo,
+    describe_source_id,
+    list_test_pattern_sources,
+    list_usb_sources,
+)
 
 log = logging.getLogger(__name__)
 SettingsOpener = Callable[[], int]
@@ -181,19 +187,21 @@ class ServiceFacade:
         self._runtime_mu = threading.RLock()
         self._is_windows = sys.platform == "win32"
         self._is_macos = sys.platform == "darwin"
-        # macOS camera control now goes through RuntimeHost -> akvc_camera
-        # (C++ binding). The old akvc.sdk-backed _mac_camera is gone; the macOS
-        # install UI methods return defaults until re-implemented on the C++ layer.
+        # macOS frame delivery goes through RuntimeHost -> akvc_camera
+        # (C++ binding). Install/activation controls also use that binding, but
+        # stay outside the frame hot path so Stop/Start cycles do not replace the
+        # live CMIO provider.
         self._mac_camera = None
+        self._akvc_camera_loader = _import_akvc_camera
         self._settings_opener = settings_opener
         self._device_registered = False
+        self._macos_activation_attempted = False
         self._worker_command_cls = None
         self._stream_dependency_runtime_error = False
         self._stream_dependencies_ready, self._stream_dependency_message = _probe_stream_dependencies()
         # Camera control on both Windows and macOS now goes through RuntimeHost
-        # -> akvc_camera (C++ binding), which handles helper/MF-registration
-        # (Win) and extension activation (macOS) inside start(). So stream
-        # readiness is just the numpy/cv2 dependency check.
+        # -> akvc_camera (C++ binding). Install/registration remains a control
+        # layer concern, so stream readiness starts with dependency readiness.
         self._state.worker_status.stream_start_ready = self._stream_dependencies_ready
         self._state.worker_status.stream_start_message = (
             "" if self._state.worker_status.stream_start_ready
@@ -221,6 +229,8 @@ class ServiceFacade:
         return self._state.selected_source_id
 
     def _discover_sources(self) -> list[Any]:
+        if self._is_macos:
+            return [describe_source_id("usb:0")] + list_test_pattern_sources()
         try:
             usb = list_usb_sources(max_probe=4)
         except Exception:  # pragma: no cover
@@ -243,12 +253,7 @@ class ServiceFacade:
             # registered separately (e.g. `akvc register` / installer).
             self._device_registered = True
         else:
-            install_status = self.recheck_install_status()
-            if not install_status.stream_start_ready:
-                raise RuntimeError(install_status.stream_start_message or install_status.install_message)
-            if not self._device_registered:
-                log.info("akvc.facade.macos_camera_ready")
-                self._device_registered = True
+            self._ensure_macos_extension_ready_for_start()
 
         with self._runtime_mu:
             self._runtime.start_source(self._state.selected_source_id)
@@ -263,6 +268,154 @@ class ServiceFacade:
             self._runtime.stop()
         self._state.worker_status.running = False
         log.info("akvc.facade.stop.graceful")
+
+    def _load_akvc_camera_binding(self) -> Any:
+        module = self._akvc_camera_loader()
+        if module is None:
+            raise RuntimeError("akvc_camera binding is not available")
+        return module
+
+    def _query_macos_extension_status(self, *, timeout: float = 5.0) -> dict[str, Any]:
+        module = self._load_akvc_camera_binding()
+        status_json = getattr(module, "macos_system_extension_status_json", None)
+        if not callable(status_json):
+            raise RuntimeError("akvc_camera binding does not expose macOS extension status")
+        payload = status_json(float(timeout))
+        if isinstance(payload, bytes):
+            payload = payload.decode("utf-8")
+        data = json.loads(str(payload or "{}"))
+        return data if isinstance(data, dict) else {}
+
+    def _query_macos_devices(self) -> dict[str, Any]:
+        module = self._load_akvc_camera_binding()
+        devices_json = getattr(module, "macos_list_devices_json", None)
+        if not callable(devices_json):
+            return {}
+        payload = devices_json()
+        if isinstance(payload, bytes):
+            payload = payload.decode("utf-8")
+        data = json.loads(str(payload or "{}"))
+        return data if isinstance(data, dict) else {}
+
+    def _macos_camera_device_visible(self, status: dict[str, Any] | None = None) -> bool:
+        names: list[str] = []
+        if status is not None:
+            names.extend(str(item) for item in status.get("devices") or [])
+            names.extend(str(item) for item in status.get("all_devices") or [])
+        try:
+            snapshot = self._query_macos_devices()
+        except Exception as exc:
+            log.info("akvc.facade.macos_device_visibility_probe_failed err=%s", exc)
+            snapshot = {}
+        names.extend(str(item) for item in snapshot.get("devices") or [])
+        names.extend(str(item) for item in snapshot.get("all_devices") or [])
+        return any(name == "AK Virtual Camera" for name in names)
+
+    def _macos_status_message(self, status: dict[str, Any]) -> str:
+        state = str(status.get("state") or "unknown")
+        if bool(status.get("needs_reboot")):
+            return "Camera Extension is waiting to uninstall on reboot. Restart macOS, then click Start or Activate again."
+        if bool(status.get("approval_required")):
+            return "Camera Extension activation is waiting for approval in System Settings."
+        error = str(status.get("last_error") or "")
+        if error:
+            return error
+        if state in {"not_installed", "unknown", ""}:
+            return "Camera Extension is not active. Click Start or Activate to request activation."
+        return f"Camera Extension is not ready: {state}"
+
+    def _apply_macos_binding_status(self, status: dict[str, Any]) -> WorkerStatus:
+        st = self._state.worker_status
+        state = str(status.get("state") or "unknown")
+        st.install_state = state
+        st.install_phase = state
+        st.install_devices = [str(item) for item in status.get("devices") or []]
+        st.install_all_devices = [str(item) for item in status.get("all_devices") or []]
+        st.install_device_prefix = str(status.get("device_prefix") or "")
+        st.approval_required = bool(status.get("approval_required"))
+        st.install_enabled = bool(status.get("enabled"))
+        st.install_blocker_code = "needs_reboot" if bool(status.get("needs_reboot")) else ""
+        st.install_message = self._macos_status_message(status)
+        st.install_steps = [
+            "Click Start or Activate to request Camera Extension activation.",
+            "Approve AK Virtual Camera in System Settings > General > Login Items & Extensions > Camera Extensions.",
+            "If the extension is waiting to uninstall on reboot, restart macOS before activating it again.",
+        ]
+        st.can_open_settings = True
+        dependency_ready, dependency_message = _probe_stream_dependencies()
+        self._stream_dependencies_ready = dependency_ready
+        self._stream_dependency_message = dependency_message
+        st.stream_start_ready = dependency_ready
+        st.stream_start_message = "" if dependency_ready else dependency_message
+        return st
+
+    def _activate_macos_extension_once(self, *, timeout: float = 30.0) -> None:
+        if self._macos_activation_attempted:
+            raise RuntimeError(
+                "Camera Extension activation was already requested. Approve it in System Settings, "
+                "or restart macOS if it is waiting to uninstall on reboot."
+            )
+        module = self._load_akvc_camera_binding()
+        activate = getattr(module, "macos_activate_system_extension", None)
+        if not callable(activate):
+            raise RuntimeError("akvc_camera binding does not expose macOS extension activation")
+        self._macos_activation_attempted = True
+        log.info("akvc.facade.macos_activation_request.begin")
+        activate(float(timeout))
+        log.info("akvc.facade.macos_activation_request.submitted")
+
+    def _ensure_macos_extension_ready_for_start(self) -> None:
+        if not self._stream_dependencies_ready:
+            raise RuntimeError(self._stream_dependency_message or "stream dependencies are not ready")
+        if self._device_registered:
+            return
+
+        if self._macos_camera_device_visible():
+            log.info("akvc.facade.macos_camera_ready_device_visible")
+            self._device_registered = True
+            self._macos_activation_attempted = False
+            return
+
+        try:
+            status = self._query_macos_extension_status(timeout=5.0)
+        except Exception as exc:
+            log.info("akvc.facade.macos_status_query_failed_before_activation err=%s", exc)
+            status = {
+                "enabled": False,
+                "state": "unknown",
+                "last_error": str(exc),
+            }
+        self._apply_macos_binding_status(status)
+        if bool(status.get("enabled")) or self._macos_camera_device_visible(status):
+            log.info("akvc.facade.macos_camera_ready")
+            self._device_registered = True
+            self._macos_activation_attempted = False
+            return
+
+        if bool(status.get("approval_required")):
+            raise RuntimeError(self._macos_status_message(status))
+
+        self._activate_macos_extension_once(timeout=30.0)
+        try:
+            refreshed = self._query_macos_extension_status(timeout=5.0)
+        except Exception as exc:
+            log.info("akvc.facade.macos_status_query_failed_after_activation err=%s", exc)
+            refreshed = {
+                "enabled": False,
+                "state": "unknown",
+                "last_error": (
+                    "Camera Extension activation was requested. Approve it in System Settings, "
+                    "or restart macOS if it is waiting to uninstall on reboot."
+                ),
+            }
+        self._apply_macos_binding_status(refreshed)
+        if bool(refreshed.get("enabled")) or self._macos_camera_device_visible(refreshed):
+            log.info("akvc.facade.macos_camera_ready_after_activation")
+            self._device_registered = True
+            self._macos_activation_attempted = False
+            return
+
+        raise RuntimeError(self._macos_status_message(refreshed))
 
     def poll_status(self) -> WorkerStatus:
         st = self._state.worker_status
@@ -385,6 +538,16 @@ class ServiceFacade:
 
     def recheck_install_status(self) -> WorkerStatus:
         if not self._is_macos or self._mac_camera is None:
+            if self._is_macos:
+                try:
+                    return self._apply_macos_binding_status(self._query_macos_extension_status(timeout=5.0))
+                except Exception as exc:  # pragma: no cover - defensive UI status path
+                    st = self._state.worker_status
+                    st.install_state = "install_failed"
+                    st.install_message = str(exc)
+                    st.stream_start_ready = self._stream_dependencies_ready
+                    st.stream_start_message = "" if st.stream_start_ready else self._stream_dependency_message
+                    return st
             return self._state.worker_status
         snapshot_factory = getattr(self._mac_camera, "inspect_installation", None)
         if callable(snapshot_factory):
@@ -421,10 +584,47 @@ class ServiceFacade:
         )
 
     def install_virtual_camera(self) -> WorkerStatus:
-        if not self._is_macos or self._mac_camera is None:
+        if not self._is_macos:
             st = self._state.worker_status
             st.last_error = "macOS only"
             return st
+        if self._mac_camera is None:
+            try:
+                try:
+                    status = self._query_macos_extension_status(timeout=5.0)
+                except Exception as exc:
+                    log.info("akvc.facade.macos_status_query_failed_before_manual_activation err=%s", exc)
+                    status = {
+                        "enabled": False,
+                        "state": "unknown",
+                        "last_error": str(exc),
+                    }
+                self._apply_macos_binding_status(status)
+                if (
+                    not bool(status.get("enabled"))
+                    and not self._macos_camera_device_visible(status)
+                    and not bool(status.get("approval_required"))
+                ):
+                    self._activate_macos_extension_once(timeout=30.0)
+                try:
+                    refreshed = self._query_macos_extension_status(timeout=5.0)
+                except Exception as exc:
+                    log.info("akvc.facade.macos_status_query_failed_after_manual_activation err=%s", exc)
+                    refreshed = {
+                        "enabled": False,
+                        "state": "unknown",
+                        "last_error": (
+                            "Camera Extension activation was requested. Approve it in System Settings, "
+                            "or restart macOS if it is waiting to uninstall on reboot."
+                        ),
+                    }
+                return self._apply_macos_binding_status(refreshed)
+            except Exception as exc:
+                st = self._state.worker_status
+                st.last_error = str(exc)
+                st.install_state = "install_failed"
+                st.install_message = str(exc)
+                return st
         result_factory = getattr(self._mac_camera, "install_extension_result", None)
         if callable(result_factory):
             result = result_factory()
