@@ -111,23 +111,28 @@ static NSError* AKVCStreamSourceError(NSInteger code, NSString* description) {
 
 - (BOOL)authorizedToStartStreamForClient:(CMIOExtensionClient*)client {
     (void)client;
+    NSLog(@"AKVC SOURCE authorizedToStartStream");
     return YES;
 }
 
 - (BOOL)startStreamAndReturnError:(NSError* _Nullable __autoreleasing*)outError {
+    NSLog(@"AKVC SOURCE startStream entry stream=%p streaming=%d", self.stream, self.streaming);
     if (self.stream == nil) {
         if (outError != nil) {
             *outError = AKVCStreamSourceError(1, @"backing stream is not attached");
         }
+        NSLog(@"AKVC SOURCE startStream -> NO (stream nil)");
         return NO;
     }
     if (self.streaming) {
+        NSLog(@"AKVC SOURCE startStream -> YES (already streaming)");
         return YES;
     }
 
     self.streaming = YES;
     [self restartTimer];
     [self emitNextFrame];
+    NSLog(@"AKVC SOURCE startStream -> YES");
     return YES;
 }
 

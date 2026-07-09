@@ -124,17 +124,21 @@ static NSError* AKVCSinkStreamSourceError(NSInteger code, NSString* description)
 
 - (BOOL)authorizedToStartStreamForClient:(CMIOExtensionClient*)client {
     (void)client;
+    NSLog(@"AKVC SINK authorizedToStartStream");
     return YES;
 }
 
 - (BOOL)startStreamAndReturnError:(NSError* _Nullable __autoreleasing*)outError {
+    NSLog(@"AKVC SINK startStream entry stream=%p streaming=%d", self.stream, self.streaming);
     if (self.stream == nil) {
         if (outError != nil) {
             *outError = AKVCSinkStreamSourceError(1, @"backing stream is not attached");
         }
+        NSLog(@"AKVC SINK startStream -> NO (stream nil)");
         return NO;
     }
     if (self.streaming) {
+        NSLog(@"AKVC SINK startStream -> YES (already streaming)");
         return YES;
     }
 
@@ -142,6 +146,7 @@ static NSError* AKVCSinkStreamSourceError(NSInteger code, NSString* description)
     self.sinkEndOfData = @NO;
     [self restartTimer];
     [self pollStreamingClients];
+    NSLog(@"AKVC SINK startStream -> YES");
     return YES;
 }
 
