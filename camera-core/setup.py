@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from shutil import copy2, rmtree
+import platform
 import subprocess
 import sys
 
@@ -21,6 +22,7 @@ PACKAGE_RUNTIME_DIR = BUILD_PACKAGE_DIR
 PACKAGE_MACOS_RUNTIME_DIR = BUILD_PACKAGE_DIR
 RUNTIME_STAGE_DIR = WORKSPACE_ROOT / ".akvc" / "package-runtime-build"
 RUNTIME_STAGE_BIN_DIR = RUNTIME_STAGE_DIR / "bin"
+MACOS_PYTHON_BUILD_DIR = WORKSPACE_ROOT / ".akvc" / "package-python-build"
 BUILD_BIN_DIR = WORKSPACE_ROOT / "build" / "bin" / "Release"
 DSHOW_BUILD_BIN_DIR = WORKSPACE_ROOT / "build" / "bin" / "dshow" / "Release"
 RUNTIME_FILES = (
@@ -54,14 +56,61 @@ def remove_stale_compat_binaries(root: Path) -> None:
 
 
 def remove_stale_binding_binaries(root: Path) -> None:
-    for stale in root.glob("akvc_camera*.pyd"):
-        stale.unlink(missing_ok=True)
+    for pattern in ("akvc_camera*.pyd", "akvc_camera*.so"):
+        for stale in root.glob(pattern):
+            stale.unlink(missing_ok=True)
 
 
 def remove_stale_runtime_dir(root: Path) -> None:
     runtime_dir = root / "_runtime"
     if runtime_dir.exists():
         rmtree(runtime_dir)
+
+
+def _current_macos_arch() -> str:
+    arch = platform.machine().lower()
+    aliases = {
+        "aarch64": "arm64",
+        "amd64": "x86_64",
+    }
+    return aliases.get(arch, arch)
+
+
+def _build_macos_python_binding() -> Path:
+    arch = _current_macos_arch()
+    subprocess.run(
+        [
+            "cmake",
+            "-S",
+            str(WORKSPACE_ROOT),
+            "-B",
+            str(MACOS_PYTHON_BUILD_DIR),
+            "-DCMAKE_BUILD_TYPE=Release",
+            f"-DPython3_EXECUTABLE={sys.executable}",
+            f"-DCMAKE_OSX_ARCHITECTURES={arch}",
+        ],
+        cwd=WORKSPACE_ROOT,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "cmake",
+            "--build",
+            str(MACOS_PYTHON_BUILD_DIR),
+            "--config",
+            "Release",
+            "--target",
+            "akvc_camera_python",
+        ],
+        cwd=WORKSPACE_ROOT,
+        check=True,
+    )
+    candidates = sorted(MACOS_PYTHON_BUILD_DIR.rglob("akvc_camera*.so"))
+    if not candidates:
+        raise FileNotFoundError(
+            f"Missing AKVC macOS Python binding under {MACOS_PYTHON_BUILD_DIR}"
+        )
+    return candidates[0]
 
 
 def sync_native_package_tree() -> None:
@@ -88,6 +137,10 @@ def sync_native_package_tree() -> None:
             dst.chmod(0o755)
         if missing:
             raise FileNotFoundError("Missing AKVC macOS runtime artifacts: " + ", ".join(missing))
+        binding_src = _build_macos_python_binding()
+        remove_stale_binding_binaries(BUILD_PACKAGE_DIR)
+        copy2(binding_src, BUILD_PACKAGE_DIR / binding_src.name)
+        (BUILD_PACKAGE_DIR / binding_src.name).chmod(0o755)
         return
     if sys.platform != "win32":
         return
