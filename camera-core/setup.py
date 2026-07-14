@@ -18,7 +18,7 @@ BUILD_PACKAGE_DIR = BUILD_LIB_DIR / "akvc"
 LOCAL_BUILD_DIR = ROOT / "build"
 LOCAL_BUILD_PACKAGE_DIR = LOCAL_BUILD_DIR / "lib" / "akvc"
 PACKAGE_RUNTIME_DIR = BUILD_PACKAGE_DIR
-PACKAGE_MACOS_RUNTIME_DIR = BUILD_PACKAGE_DIR / "_runtime" / "macos"
+PACKAGE_MACOS_RUNTIME_DIR = BUILD_PACKAGE_DIR
 RUNTIME_STAGE_DIR = WORKSPACE_ROOT / ".akvc" / "package-runtime-build"
 RUNTIME_STAGE_BIN_DIR = RUNTIME_STAGE_DIR / "bin"
 BUILD_BIN_DIR = WORKSPACE_ROOT / "build" / "bin" / "Release"
@@ -36,7 +36,6 @@ MACOS_RUNTIME_FILES = (
     "akvc-macos-list-devices",
     "akvc-macos-sync-ipc",
     "libakvc-macos-direct-sender.dylib",
-    "VirtualCamera.pkg",
 )
 
 
@@ -59,7 +58,7 @@ def remove_stale_binding_binaries(root: Path) -> None:
         stale.unlink(missing_ok=True)
 
 
-def remove_stale_windows_runtime(root: Path) -> None:
+def remove_stale_runtime_dir(root: Path) -> None:
     runtime_dir = root / "_runtime"
     if runtime_dir.exists():
         rmtree(runtime_dir)
@@ -67,10 +66,10 @@ def remove_stale_windows_runtime(root: Path) -> None:
 
 def sync_native_package_tree() -> None:
     if sys.platform == "darwin":
-        staged_runtime = RUNTIME_STAGE_DIR / "akvc" / "_runtime" / "macos"
+        remove_stale_runtime_dir(BUILD_PACKAGE_DIR)
+        staged_runtime = RUNTIME_STAGE_DIR / "akvc"
         existing_runtime = WORKSPACE_ROOT / "build" / "macos" / "Build" / "Products" / "Release"
         existing_sources = {name: existing_runtime / name for name in MACOS_RUNTIME_FILES}
-        existing_sources["VirtualCamera.pkg"] = WORKSPACE_ROOT / "build" / "macos" / "VirtualCamera.pkg"
         if any(not path.is_file() for path in existing_sources.values()):
             subprocess.run(
                 [sys.executable, "tools/make.py", "install-runtime", "--prefix", str(RUNTIME_STAGE_DIR)],
@@ -86,15 +85,14 @@ def sync_native_package_tree() -> None:
                 continue
             dst = PACKAGE_MACOS_RUNTIME_DIR / name
             copy2(src, dst)
-            if name != "VirtualCamera.pkg":
-                dst.chmod(0o755)
+            dst.chmod(0o755)
         if missing:
             raise FileNotFoundError("Missing AKVC macOS runtime artifacts: " + ", ".join(missing))
         return
     if sys.platform != "win32":
         return
 
-    remove_stale_windows_runtime(BUILD_PACKAGE_DIR)
+    remove_stale_runtime_dir(BUILD_PACKAGE_DIR)
 
     runtime_paths, binding_src = _existing_runtime_sources()
     missing_runtime = [name for name in RUNTIME_FILES if not runtime_paths[name].is_file()]
@@ -153,10 +151,10 @@ class build_py(_build_py):
         sync_native_package_tree()
         build_package_dir = Path(self.build_lib) / "akvc"
         build_package_dir.mkdir(parents=True, exist_ok=True)
-        remove_stale_windows_runtime(build_package_dir)
+        remove_stale_runtime_dir(build_package_dir)
         remove_stale_compat_binaries(build_package_dir)
         super().run()
-        remove_stale_windows_runtime(build_package_dir)
+        remove_stale_runtime_dir(build_package_dir)
         remove_stale_compat_binaries(build_package_dir)
 
 

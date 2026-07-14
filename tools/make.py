@@ -267,7 +267,7 @@ MACOS_LIST_DEVICES_TOOL = MACOS_BUILD / "Build" / "Products" / "Release" / "akvc
 MACOS_SYNC_IPC_TOOL = MACOS_BUILD / "Build" / "Products" / "Release" / "akvc-macos-sync-ipc"
 MACOS_DIRECT_SENDER_LIB = MACOS_BUILD / "Build" / "Products" / "Release" / "libakvc-macos-direct-sender.dylib"
 MACOS_PKG = MACOS_BUILD / "VirtualCamera.pkg"
-MACOS_RUNTIME_DIR = ROOT / "camera-core" / "src" / "akvc" / "_runtime" / "macos"
+MACOS_RUNTIME_DIR = ROOT / "camera-core" / "src" / "akvc"
 MACOS_DMG = MACOS_BUILD / "VirtualCamera.dmg"
 MACOS_ZIP = MACOS_BUILD / "VirtualCamera.zip"
 MACOS_DEPLOYMENT_TARGET = os.environ.get("MACOS_DEPLOYMENT_TARGET", "13.0")
@@ -933,9 +933,6 @@ def cmd_install_runtime(args: argparse.Namespace) -> int:
         rc = cmd_build_macos(args)
         if rc != 0:
             return rc
-        rc = _run_macos_script(MACOS_BUILD_PKG_SCRIPT)
-        if rc != 0:
-            return rc
         assets = {
             "akvc-macos-status": MACOS_STATUS_TOOL,
             "akvc-macos-install": MACOS_INSTALL_TOOL,
@@ -943,19 +940,17 @@ def cmd_install_runtime(args: argparse.Namespace) -> int:
             "akvc-macos-list-devices": MACOS_LIST_DEVICES_TOOL,
             "akvc-macos-sync-ipc": MACOS_SYNC_IPC_TOOL,
             "libakvc-macos-direct-sender.dylib": MACOS_DIRECT_SENDER_LIB,
-            "VirtualCamera.pkg": MACOS_PKG,
         }
         missing = [str(path) for path in assets.values() if not path.is_file()]
         if missing:
             print("[make] missing macOS runtime assets: " + ", ".join(missing), file=sys.stderr)
             return 2
-        runtime_dir = prefix / "akvc" / "_runtime" / "macos"
+        runtime_dir = prefix / "akvc"
         runtime_dir.mkdir(parents=True, exist_ok=True)
         for name, src in assets.items():
             dst = runtime_dir / name
             shutil.copy2(src, dst)
-            if name != "VirtualCamera.pkg":
-                dst.chmod(0o755)
+            dst.chmod(0o755)
         return 0
     return _install_windows_runtime(prefix, args)
 
@@ -1938,6 +1933,7 @@ def cmd_install_session_macos(args: argparse.Namespace) -> int:
 
 
 def _sync_macos_runtime_assets(*, require_pkg: bool) -> int:
+    del require_pkg
     assets = {
         "akvc-macos-status": MACOS_STATUS_TOOL,
         "akvc-macos-install": MACOS_INSTALL_TOOL,
@@ -1946,11 +1942,6 @@ def _sync_macos_runtime_assets(*, require_pkg: bool) -> int:
         "akvc-macos-sync-ipc": MACOS_SYNC_IPC_TOOL,
         "libakvc-macos-direct-sender.dylib": MACOS_DIRECT_SENDER_LIB,
     }
-    if require_pkg:
-        assets["VirtualCamera.pkg"] = MACOS_PKG
-    elif MACOS_PKG.is_file():
-        assets["VirtualCamera.pkg"] = MACOS_PKG
-
     missing = [name for name, path in assets.items() if not path.is_file()]
     if missing:
         print(
@@ -1963,8 +1954,7 @@ def _sync_macos_runtime_assets(*, require_pkg: bool) -> int:
     for name, src in assets.items():
         dst = MACOS_RUNTIME_DIR / name
         shutil.copy2(src, dst)
-        if dst.name != "VirtualCamera.pkg":
-            dst.chmod(0o755)
+        dst.chmod(0o755)
         print(f"[make] synced macOS runtime asset: {dst}")
     return 0
 
