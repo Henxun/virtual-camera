@@ -88,12 +88,12 @@ void resize_bgr24(const std::uint8_t* src,
 
 namespace {
 
-// Per-pixel BGR->Y/U/V (BT.601 limited-range), byte-identical to the legacy
-// rgb24_to_nv12_frame: b=src[0], g=src[1], r=src[2].
+// Per-pixel BGR->Y/U/V (BT.709 limited-range). Windows consumers generally
+// interpret HD NV12 as BT.709; BT.601 coefficients cause visible color shifts.
 inline void bgr_to_yuv(int b, int g, int r, int& yv, int& u, int& v) {
-    yv = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-    u  = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
-    v  = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
+    yv = ((47 * r + 157 * g + 16 * b + 128) >> 8) + 16;
+    u  = ((-26 * r - 86 * g + 112 * b + 128) >> 8) + 128;
+    v  = ((112 * r - 102 * g - 10 * b + 128) >> 8) + 128;
 }
 
 // Shared NV12 writer for BGR24 (3bpp) and BGRA32 (4bpp) sources.

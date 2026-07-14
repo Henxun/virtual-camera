@@ -96,12 +96,12 @@ void test_nv12_solid(int b, int g, int r, int want_y, int want_u, int want_v, co
 }
 
 void test_bgr24_to_nv12() {
-    // BT.601 limited-range, computed by hand to match the legacy pipeline.
+    // BT.709 limited-range for HD virtual-camera output.
     test_nv12_solid(0,   0,   0,   16,  128, 128, "black");
     test_nv12_solid(255, 255, 255, 235, 128, 128, "white");
-    test_nv12_solid(0,   255, 0,   144, 54,  34,  "green");  // Y=(33023>>8)+16=128+16=144
-    test_nv12_solid(255, 0,   0,   41,  240, 110, "blue");   // B=255: V=(-18*255+128)>>8=-18 -> +128=110
-    test_nv12_solid(0,   0,   255, 82,  90,  240, "red");    // R=255: Y=(66*255+128)>>8=66 -> +16=82
+    test_nv12_solid(0,   255, 0,   172, 42,  26,  "green");
+    test_nv12_solid(255, 0,   0,   32,  240, 118, "blue");
+    test_nv12_solid(0,   0,   255, 63,  102, 240, "red");
 }
 
 void test_bgra32_to_nv12_matches_bgr24() {

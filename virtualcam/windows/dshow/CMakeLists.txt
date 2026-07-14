@@ -40,6 +40,7 @@ set_target_properties(akvc_dshow PROPERTIES
     OUTPUT_NAME "akvc-dshow"
     SUFFIX ".dll"
     PREFIX ""
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/dshow"
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
 

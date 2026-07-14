@@ -27,11 +27,15 @@ class FakeVm:
         self.busy_changed = FakeSignal()
         self.state_text_changed = FakeSignal()
         self.metrics_changed = FakeSignal()
+        self.install_status_changed = FakeSignal()
         self.preview_changed = FakeSignal()
         self.error = FakeSignal()
         self.start_calls = 0
         self.stop_calls = 0
         self.refresh_calls = 0
+        self.install_calls = 0
+        self.open_settings_calls = 0
+        self.recheck_calls = 0
         self.selected_calls: list[str] = []
 
     def start(self) -> None:
@@ -42,6 +46,15 @@ class FakeVm:
 
     def refresh_sources(self) -> None:
         self.refresh_calls += 1
+
+    def install_virtual_camera(self) -> None:
+        self.install_calls += 1
+
+    def open_install_settings(self) -> None:
+        self.open_settings_calls += 1
+
+    def recheck_install_status(self) -> None:
+        self.recheck_calls += 1
 
     def select_source(self, source_id: str) -> None:
         self.selected_calls.append(source_id)

@@ -188,15 +188,13 @@ HRESULT CAKVCStream::FillBuffer(IMediaSample* pSample) {
     REFERENCE_TIME rtStart = m_rtNextStart;
     REFERENCE_TIME rtEnd   = rtStart + m_rtFrameLength;
 
-    // Try to read from frame bus; on miss, output placeholder.
     HRESULT hr = E_FAIL;
     if (m_busOpen) {
-        hr = FillFromFrameBus(pSample, rtStart, rtEnd);
+        hr = FillFromFrameBus(pSample);
     } else {
-        // Try to (re)open lazily.
         if (m_bus.open() == AKVC_OK) {
             m_busOpen = true;
-            hr = FillFromFrameBus(pSample, rtStart, rtEnd);
+            hr = FillFromFrameBus(pSample);
         }
     }
 
@@ -213,9 +211,7 @@ HRESULT CAKVCStream::FillBuffer(IMediaSample* pSample) {
     return hr;
 }
 
-HRESULT CAKVCStream::FillFromFrameBus(IMediaSample* pSample,
-                                      REFERENCE_TIME& rtStart,
-                                      REFERENCE_TIME& rtEnd) {
+HRESULT CAKVCStream::FillFromFrameBus(IMediaSample* pSample) {
     BYTE* pData = nullptr;
     HRESULT hr = pSample->GetPointer(&pData);
     if (FAILED(hr) || !pData) return hr;
@@ -226,25 +222,27 @@ HRESULT CAKVCStream::FillFromFrameBus(IMediaSample* pSample,
     if (rc != AKVC_OK || !view.header) return E_FAIL;
 
     const auto* hdr = view.header;
-    const long  expected = static_cast<long>(hdr->plane_size[0] + hdr->plane_size[1]);
+    const bool helperPlaceholder =
+        (hdr->flags & AKVC_FLAG_PLACEHOLDER) != 0 &&
+        view.helper_pid != 0 &&
+        view.writer_pid == view.helper_pid;
+    if (helperPlaceholder) return E_FAIL;
+
+    const long expected = static_cast<long>(hdr->plane_size[0] + hdr->plane_size[1]);
     if (expected > lSize) return E_FAIL;
 
-    // Resolution must match the negotiated media type; otherwise fall through
-    // to placeholder (which renders at the negotiated size).
     if (static_cast<long>(hdr->width) != m_lCurrentWidth ||
         static_cast<long>(hdr->height) != m_lCurrentHeight) {
         return E_FAIL;
     }
 
-    // FourCC mapping check: ensure consumer-side mt matches producer-side fourcc.
     const GUID& sub = m_currentSubtype;
     const bool match =
         (sub == MEDIASUBTYPE_NV12  && hdr->fourcc == AKVC_FOURCC_NV12) ||
         (sub == MEDIASUBTYPE_YUY2  && hdr->fourcc == AKVC_FOURCC_YUY2) ||
         (sub == MEDIASUBTYPE_RGB24 && hdr->fourcc == AKVC_FOURCC_RGB24);
-    if (!match) return E_FAIL;  // graph re-negotiation handles this on stop/start
+    if (!match) return E_FAIL;
 
-    // Copy planes contiguously (DShow buffers are flat).
     BYTE* dst = pData;
     if (view.plane0 && hdr->plane_size[0]) {
         std::memcpy(dst, view.plane0, hdr->plane_size[0]);
@@ -273,7 +271,6 @@ HRESULT CAKVCStream::FillPlaceholder(IMediaSample* pSample,
     const long  lSize = pSample->GetSize();
     const GUID& sub   = m_currentSubtype;
 
-    // Render an animated placeholder so the user sees the device "alive".
     const long w = m_lCurrentWidth;
     const long h = m_lCurrentHeight;
 
@@ -281,13 +278,7 @@ HRESULT CAKVCStream::FillPlaceholder(IMediaSample* pSample,
         const long ySize  = w * h;
         const long uvSize = w * h / 2;
         if (ySize + uvSize > lSize) return E_FAIL;
-        // Y plane: dim ramp + moving bar
-        const int bar = static_cast<int>(m_frameCount % h);
-        for (long y = 0; y < h; ++y) {
-            unsigned char val = (y == bar) ? 235 : 16;
-            std::memset(pData + (size_t)y * w, val, w);
-        }
-        // UV plane: neutral
+        std::memset(pData, 16, ySize);
         std::memset(pData + ySize, 128, uvSize);
         pSample->SetActualDataLength(ySize + uvSize);
     } else if (sub == MEDIASUBTYPE_YUY2) {

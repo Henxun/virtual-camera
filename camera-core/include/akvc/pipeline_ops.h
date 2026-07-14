@@ -23,7 +23,7 @@ void resize_bgr24(const std::uint8_t* src,
                   std::uint8_t* dst,
                   int dst_w, int dst_h, int dst_stride);
 
-// Convert BGR24 to NV12. Produces a full-res Y plane and a half-res
+// Convert BGR24 to BT.709 limited-range NV12. Produces a full-res Y plane and a half-res
 // interleaved UV plane (standard NV12). cb/cr are computed per pixel then
 // averaged over each 2x2 block — identical to the legacy rgb24_to_nv12_frame.
 //   y_out:  y_stride * h bytes (y_stride >= w)

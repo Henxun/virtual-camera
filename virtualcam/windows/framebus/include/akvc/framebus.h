@@ -39,6 +39,9 @@ struct FrameView {
     const akvc_frame_header_t* header = nullptr;
     const uint8_t*             plane0 = nullptr;
     const uint8_t*             plane1 = nullptr;
+    uint64_t                   producer_seq = 0;
+    uint32_t                   writer_pid = 0;
+    uint32_t                   helper_pid = 0;
 };
 
 struct FrameBusErrorInfo {

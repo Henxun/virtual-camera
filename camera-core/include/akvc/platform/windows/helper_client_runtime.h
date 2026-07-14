@@ -32,6 +32,7 @@ struct HelperStatus {
     std::uint32_t pid = 0;
     std::uint64_t heartbeat_100ns = 0;
     std::uint64_t producer_seq = 0;
+    std::uint32_t writer_pid = 0;
 };
 
 class HelperClientRuntime {
@@ -52,10 +53,11 @@ public:
     // ping(); if down, start_service(helper_exe). Convenience wrapper.
     bool ensure_running(const std::string& helper_exe = std::string());
 
-    // Register the Media Foundation virtual camera via MFCreateVirtualCamera
-    // (runs in the elevated helper). Required on Windows 11 so MF-based
-    // consumers (Chrome/Edge/Teams) see the device. Idempotent.
     bool register_mf(const std::string& name = std::string("AK Virtual Camera"));
+
+    // Resolve the helper executable path from AKVC runtime layout when no
+    // explicit override is provided.
+    static std::string resolve_default_helper_exe();
 
     // Ask the helper daemon to exit (CMD_QUIT).
     bool quit();

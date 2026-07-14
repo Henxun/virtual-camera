@@ -271,16 +271,30 @@ bool Helper::register_mf_virtual_camera(const wchar_t* name) {
     wcscat_s(subkey, clsid_str);
     wcscat_s(subkey, L"\\InprocServer32");
     HKEY key = nullptr;
-    if (::RegCreateKeyExW(HKEY_CLASSES_ROOT, subkey, 0, nullptr,
-                          REG_OPTION_NON_VOLATILE, KEY_SET_VALUE,
-                          nullptr, &key, nullptr) == ERROR_SUCCESS) {
-        ::RegSetValueExW(key, nullptr, 0, REG_SZ,
-                         reinterpret_cast<const BYTE*>(dll_path),
-                         (wcslen(dll_path) + 1) * sizeof(wchar_t));
+    LSTATUS registry_status = ::RegCreateKeyExW(
+        HKEY_CLASSES_ROOT, subkey, 0, nullptr, REG_OPTION_NON_VOLATILE,
+        KEY_SET_VALUE, nullptr, &key, nullptr);
+    if (registry_status == ERROR_SUCCESS) {
+        registry_status = ::RegSetValueExW(
+            key, nullptr, 0, REG_SZ, reinterpret_cast<const BYTE*>(dll_path),
+            (wcslen(dll_path) + 1) * sizeof(wchar_t));
         wchar_t tm[] = L"Both";
-        ::RegSetValueExW(key, L"ThreadingModel", 0, REG_SZ,
-                         reinterpret_cast<const BYTE*>(tm), sizeof(tm));
+        if (registry_status == ERROR_SUCCESS) {
+            registry_status = ::RegSetValueExW(
+                key, L"ThreadingModel", 0, REG_SZ,
+                reinterpret_cast<const BYTE*>(tm), sizeof(tm));
+        }
         ::RegCloseKey(key);
+    }
+    if (registry_status != ERROR_SUCCESS) {
+        std::fprintf(
+            stderr,
+            "[helper] MF registry write failed path=%S win32=%ld\n",
+            dll_path,
+            static_cast<long>(registry_status));
+        ::MFShutdown();
+        ::CoUninitialize();
+        return false;
     }
 
     IMFVirtualCamera* vc = nullptr;
@@ -585,17 +599,19 @@ bool Helper::handle_client(HANDLE pipe) {
 
         case CMD_STATUS: {
             auto* ctrl = producer_.ctrl();
-            uint8_t buf[24];
+            uint8_t buf[28];
             uint32_t magic = AKVC_MAGIC;
             uint32_t pid = ::GetCurrentProcessId();
             uint64_t hb = ctrl->producer_heartbeat;
             uint32_t seq_lo = static_cast<uint32_t>(ctrl->producer_seq & 0xFFFFFFFF);
             uint32_t seq_hi = static_cast<uint32_t>(ctrl->producer_seq >> 32);
+            uint32_t writer_pid = ctrl->writer_pid;
             memcpy(buf + 0,  &magic, 4);
             memcpy(buf + 4,  &pid, 4);
             memcpy(buf + 8,  &hb, 8);
             memcpy(buf + 16, &seq_lo, 4);
             memcpy(buf + 20, &seq_hi, 4);
+            memcpy(buf + 24, &writer_pid, 4);
             return write_exact(pipe, buf, sizeof(buf));
         }
 
@@ -712,6 +728,9 @@ void Helper::pipe_loop() {
 int wmain(int argc, wchar_t* argv[]) {
     akvc::Helper helper;
     std::wstring log_path;
+    enum class OneShotCommand { None, RegisterMf, UnregisterMf };
+    OneShotCommand one_shot_command = OneShotCommand::None;
+    std::wstring one_shot_name = L"AK Virtual Camera";
 
     for (int i = 1; i < argc; ++i) {
         if (wcscmp(argv[i], L"--pipe") == 0 && i + 1 < argc) {
@@ -749,6 +768,18 @@ int wmain(int argc, wchar_t* argv[]) {
             helper.set_log_path(log_path);
             continue;
         }
+        if (wcscmp(argv[i], L"--register-mf") == 0) {
+            one_shot_command = OneShotCommand::RegisterMf;
+            continue;
+        }
+        if (wcscmp(argv[i], L"--unregister-mf") == 0) {
+            one_shot_command = OneShotCommand::UnregisterMf;
+            continue;
+        }
+        if (wcscmp(argv[i], L"--name") == 0 && i + 1 < argc) {
+            one_shot_name = argv[++i];
+            continue;
+        }
         std::fprintf(stderr, "[helper] ignoring unknown argument: %S\n", argv[i]);
     }
 
@@ -757,6 +788,13 @@ int wmain(int argc, wchar_t* argv[]) {
         if (_wfreopen_s(&log_fp, log_path.c_str(), L"a", stderr) == 0 && log_fp != nullptr) {
             setvbuf(stderr, nullptr, _IONBF, 0);
         }
+    }
+
+    if (one_shot_command == OneShotCommand::RegisterMf) {
+        return helper.register_mf_virtual_camera(one_shot_name.c_str()) ? 0 : 1;
+    }
+    if (one_shot_command == OneShotCommand::UnregisterMf) {
+        return helper.unregister_mf_virtual_camera() ? 0 : 1;
     }
 
     akvc::g_helper_instance = &helper;

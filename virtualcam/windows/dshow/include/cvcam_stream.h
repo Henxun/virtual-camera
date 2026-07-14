@@ -64,9 +64,7 @@ public:
                                 DWORD* pTypeSupport) override;
 
 private:
-    HRESULT FillFromFrameBus(IMediaSample* pSample,
-                             REFERENCE_TIME& rtStart,
-                             REFERENCE_TIME& rtEnd);
+    HRESULT FillFromFrameBus(IMediaSample* pSample);
     HRESULT FillPlaceholder(IMediaSample* pSample,
                             REFERENCE_TIME& rtStart,
                             REFERENCE_TIME& rtEnd);

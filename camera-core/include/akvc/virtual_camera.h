@@ -11,9 +11,9 @@
 //   }
 //
 // Platform behavior of start():
-//   - Windows: ensure the helper daemon is running (runtime), then open the
-//     shared-memory frame bus. Does NOT register the MF virtual camera
-//     (installation is a separate step).
+//   - Windows: ensure the helper daemon is running (runtime), register the MF
+//     virtual camera on Windows 11+ via the elevated helper, then open the
+//     shared-memory frame bus. DShow registration remains an installation step.
 //   - macOS: attach a CMIO sink-stream DirectSender (the vcam.mm path). Camera
 //     Extension activation/approval is handled by the container app before
 //     frame delivery starts.

@@ -668,6 +668,9 @@ akvc_status_t FrameBusConsumer::wait_frame(uint32_t timeout_ms, FrameView& out) 
             }
 
             out.header = hdr;
+            out.producer_seq = producer_seq;
+            out.writer_pid = ctrl->writer_pid;
+            out.helper_pid = ctrl->helper_pid;
             if (hdr->plane_offset[0] && hdr->plane_size[0]) {
                 out.plane0 = slot + hdr->plane_offset[0];
             }

@@ -32,7 +32,7 @@ THIRD = ROOT / "third_party"
 BASECLASSES = THIRD / "baseclasses"
 BASECLASSES_BUILD = BASECLASSES / "build"
 STRMBASE_LIB = BASECLASSES_BUILD / "Release" / "strmbase.lib"
-DSHOW_DLL = BUILD / "bin" / "Release" / "akvc-dshow.dll"
+DSHOW_DLL = BUILD / "bin" / "dshow" / "Release" / "akvc-dshow.dll"
 PACKAGE_RUNTIME = BUILD / "package-runtime"
 
 # CMake generator. If the AKVC_CMAKE_GENERATOR env var is set, it wins;
@@ -770,7 +770,7 @@ def _install_windows_runtime(prefix: Path, args: argparse.Namespace) -> int:
 
 def _sync_windows_runtime_into_source_tree(prefix: Path) -> None:
     runtime_bin = prefix / "bin"
-    runtime_pkg = ROOT / "akvc" / "_runtime" / "windows"
+    runtime_pkg = ROOT / "akvc"
     runtime_pkg.mkdir(parents=True, exist_ok=True)
     for name in ("akvc_helper.exe", "akvc-dshow.dll", "akvc-mf.dll"):
         shutil.copy2(runtime_bin / name, runtime_pkg / name)
@@ -914,11 +914,49 @@ def cmd_run(_: argparse.Namespace) -> int:
 
 
 def cmd_test(_: argparse.Namespace) -> int:
-    return _run([sys.executable, "-m", "pytest", "-q", str(ROOT / "tests" / "unit")])
+    pytest_temp = ROOT / ".akvc" / "pytest-temp"
+    pytest_temp.mkdir(parents=True, exist_ok=True)
+    return _run([
+        sys.executable,
+        "-m",
+        "pytest",
+        "-q",
+        "--basetemp",
+        str(pytest_temp),
+        str(ROOT / "tests" / "unit"),
+    ])
 
 
 def cmd_install_runtime(args: argparse.Namespace) -> int:
     prefix = Path(args.prefix) if args.prefix else PACKAGE_RUNTIME
+    if sys.platform == "darwin":
+        rc = cmd_build_macos(args)
+        if rc != 0:
+            return rc
+        rc = _run_macos_script(MACOS_BUILD_PKG_SCRIPT)
+        if rc != 0:
+            return rc
+        assets = {
+            "akvc-macos-status": MACOS_STATUS_TOOL,
+            "akvc-macos-install": MACOS_INSTALL_TOOL,
+            "akvc-macos-uninstall": MACOS_UNINSTALL_TOOL,
+            "akvc-macos-list-devices": MACOS_LIST_DEVICES_TOOL,
+            "akvc-macos-sync-ipc": MACOS_SYNC_IPC_TOOL,
+            "libakvc-macos-direct-sender.dylib": MACOS_DIRECT_SENDER_LIB,
+            "VirtualCamera.pkg": MACOS_PKG,
+        }
+        missing = [str(path) for path in assets.values() if not path.is_file()]
+        if missing:
+            print("[make] missing macOS runtime assets: " + ", ".join(missing), file=sys.stderr)
+            return 2
+        runtime_dir = prefix / "akvc" / "_runtime" / "macos"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        for name, src in assets.items():
+            dst = runtime_dir / name
+            shutil.copy2(src, dst)
+            if name != "VirtualCamera.pkg":
+                dst.chmod(0o755)
+        return 0
     return _install_windows_runtime(prefix, args)
 
 

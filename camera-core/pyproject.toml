@@ -1,6 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = [
+    "setuptools>=70.1",
+    "wheel",
+    "pybind11>=2.12",
+    "numpy>=1.26,<3.0",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -20,19 +25,24 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8.1", "pytest-cov>=4.1"]
 
+[tool.setuptools]
+include-package-data = false
+
 [tool.setuptools.package-dir]
-"" = ".."
+"" = "../build/lib"
 
 [tool.setuptools.packages.find]
-where = [".."]
+where = ["../build/lib"]
 include = ["akvc*"]
 
 [tool.setuptools.package-data]
 "akvc.core" = ["py.typed"]
 "akvc" = [
-    "_runtime/windows/akvc_helper.exe",
-    "_runtime/windows/akvc-mf.dll",
-    "_runtime/windows/akvc-dshow.dll",
+    "_core_native.py",
+    "akvc_camera.pyd",
+    "akvc_helper.exe",
+    "akvc-mf.dll",
+    "akvc-dshow.dll",
     "_runtime/macos/README.md",
     "_runtime/macos/akvc-macos-status",
     "_runtime/macos/akvc-macos-install",

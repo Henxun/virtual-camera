@@ -88,6 +88,24 @@ std::wstring default_log_path() {
     return path.wstring();
 }
 
+std::filesystem::path module_dir_path() {
+    wchar_t module_path[MAX_PATH]{};
+    const DWORD length = ::GetModuleFileNameW(nullptr, module_path, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        return {};
+    }
+    return std::filesystem::path(module_path).parent_path();
+}
+
+std::string normalize_utf8_path(const std::filesystem::path& path) {
+    if (path.empty()) {
+        return std::string();
+    }
+    std::error_code ec;
+    const auto normalized = std::filesystem::weakly_canonical(path, ec);
+    return to_string((ec ? path : normalized).wstring());
+}
+
 std::string win32_message(const char* op, DWORD err) {
     std::ostringstream oss;
     oss << op << " err=" << err;
@@ -97,6 +115,30 @@ std::string win32_message(const char* op, DWORD err) {
 }  // namespace
 
 HelperClientRuntime::HelperClientRuntime() = default;
+
+std::string HelperClientRuntime::resolve_default_helper_exe() {
+    const wchar_t* env_value = ::_wgetenv(L"AKVC_HELPER_EXE");
+    if (env_value != nullptr && env_value[0] != L'\0') {
+        const std::filesystem::path env_path(env_value);
+        if (std::filesystem::is_regular_file(env_path)) {
+            return normalize_utf8_path(env_path);
+        }
+    }
+
+    const auto module_dir = module_dir_path();
+    if (!module_dir.empty()) {
+        const std::vector<std::filesystem::path> candidates = {
+            module_dir / L"akvc_helper.exe",
+        };
+        for (const auto& candidate : candidates) {
+            if (std::filesystem::is_regular_file(candidate)) {
+                return normalize_utf8_path(candidate);
+            }
+        }
+    }
+
+    return std::string();
+}
 
 bool HelperClientRuntime::ping() {
     last_pipe_error_.clear();
@@ -118,16 +160,21 @@ HelperStatus HelperClientRuntime::status() {
     }
     std::uint32_t magic = 0, pid = 0, seq_lo = 0, seq_hi = 0;
     std::uint64_t heartbeat = 0;
+    std::uint32_t writer_pid = 0;
     std::memcpy(&magic, data.data(), sizeof(magic));
     std::memcpy(&pid, data.data() + 4, sizeof(pid));
     std::memcpy(&heartbeat, data.data() + 8, sizeof(heartbeat));
     std::memcpy(&seq_lo, data.data() + 16, sizeof(seq_lo));
     std::memcpy(&seq_hi, data.data() + 20, sizeof(seq_hi));
+    if (data.size() >= 28) {
+        std::memcpy(&writer_pid, data.data() + 24, sizeof(writer_pid));
+    }
     out.valid = true;
     out.magic = magic;
     out.pid = pid;
     out.heartbeat_100ns = heartbeat;
     out.producer_seq = (static_cast<std::uint64_t>(seq_hi) << 32) | seq_lo;
+    out.writer_pid = writer_pid;
     return out;
 }
 
@@ -139,7 +186,7 @@ bool HelperClientRuntime::start_service(const std::string& helper_exe) {
 
     const std::wstring task = DEFAULT_TASK_NAME;
     std::string installed_task_error;
-    if (scheduled_task_exists(task)) {
+    if (helper_exe.empty() && scheduled_task_exists(task)) {
         if (start_installed(task, START_TIMEOUT_S)) {
             last_error_message_.clear();
             return true;
@@ -147,7 +194,9 @@ bool HelperClientRuntime::start_service(const std::string& helper_exe) {
         installed_task_error = last_error_message_;
     }
 
-    const std::wstring exe = helper_exe.empty() ? std::wstring() : to_wstring(helper_exe);
+    const std::wstring exe = helper_exe.empty()
+        ? to_wstring(resolve_default_helper_exe())
+        : to_wstring(helper_exe);
     if (exe.empty()) {
         if (!installed_task_error.empty()) {
             last_error_message_ = installed_task_error;
@@ -414,7 +463,7 @@ std::vector<std::uint8_t> HelperClientRuntime::transact(
         return {};
     }
 
-    const DWORD expected = cmd == CMD_STATUS ? 24u : 4u;
+    const DWORD expected = cmd == CMD_STATUS ? 28u : 4u;
     std::vector<std::uint8_t> response(expected);
     DWORD read = 0;
     if (!::ReadFile(handle, response.data(), expected, &read, nullptr) || read != expected) {

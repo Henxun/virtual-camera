@@ -122,6 +122,15 @@ HRESULT MakeMediaType(const MediaTypeDesc& desc, IMFMediaType** out) {
     hr = mt->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
     if (FAILED(hr)) { mt->Release(); return hr; }
 
+    hr = mt->SetUINT32(MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_BT709);
+    if (FAILED(hr)) { mt->Release(); return hr; }
+    hr = mt->SetUINT32(MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709);
+    if (FAILED(hr)) { mt->Release(); return hr; }
+    hr = mt->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709);
+    if (FAILED(hr)) { mt->Release(); return hr; }
+    hr = mt->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235);
+    if (FAILED(hr)) { mt->Release(); return hr; }
+
     hr = mt->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
     if (FAILED(hr)) { mt->Release(); return hr; }
 
